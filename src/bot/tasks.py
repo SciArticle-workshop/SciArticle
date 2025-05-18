@@ -1,31 +1,30 @@
 import logging
+import os
 
 import requests
 from celery import shared_task
 from django.db import IntegrityError
 from django.utils import timezone
-from telegram import Bot
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaDocument
 
-from bot.models import Config, Request, ChatUser
+from bot.models import ChatUser, PDFUpload, Request, Validation, Config
 
 logger = logging.getLogger(__name__)
 
-import os
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '') 
+if not TELEGRAM_TOKEN:
+    logger.error("TELEGRAM_BOT_TOKEN is not set in environment variables")
+bot = Bot(token=TELEGRAM_TOKEN) if TELEGRAM_TOKEN else None
 
-from django.utils import timezone
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaDocument
 
-from bot.models import ChatUser, PDFUpload, Request, Validation
-
-TELEGRAM_TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
 SEND_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-bot = Bot(token=TELEGRAM_TOKEN)
 
 
 def _send_sync(chat_id: int, text: str, reply_to: int = None):
     payload = {'chat_id': chat_id, 'text': text}
     if reply_to is not None:
         payload['reply_to_message_id'] = reply_to
+
     requests.post(SEND_URL, json=payload, timeout=5)
 
 
@@ -48,15 +47,15 @@ def request_pdf_task(chat_id, message_id, doi):
         return
 
     # Если статьи нет в базе данных
-    request = Request.objects.create(
+    request_obj = Request.objects.create(
         doi=doi,
         status='pending',
         chat_id=chat_id,
         user=chat_user,
         message_id=message_id
     )
-    logger.info(f"Request recorded in the db {request}")
-    return request
+    logger.info(f"Request recorded in the db {request_obj}")
+    return request_obj.id
 
 
 @shared_task
@@ -70,11 +69,15 @@ def handle_pdf_upload_task(
         telegram_id=uploader_id,
         defaults={'username': uploader_username}
     )
+    
+    safe_file_name = "".join(c if c.isalnum() or c in ('.', '_', '-') else '_' for c in file_name)
+
     pdf = PDFUpload.objects.create(
         request=req,
-        file=f"articles/{req.id}_{file_name}",
+        file=f"articles/{req.id}_{safe_file_name}",
         uploaded_at=timezone.now(),
-        user=chat_user
+        user=chat_user,
+        chat_message_id=orig_msg_id
     )
     keyboard = InlineKeyboardMarkup([
         [
@@ -82,14 +85,22 @@ def handle_pdf_upload_task(
             InlineKeyboardButton("❌ PDF неверный", callback_data=f"vote_invalid:{pdf.id}"),
         ]
     ])
-    bot.edit_message_media(
-        chat_id=req.chat_id,
-        message_id=orig_msg_id,
-        media=InputMediaDocument(media=file_id, caption=f"Проверьте PDF {req.doi}")
+
+    caption_text = (
+        f"Пожалуйста, проверьте PDF для статьи DOI: {req.doi}\n"
+        f"Загружен пользователем: @{uploader_username if uploader_username else uploader_id}"
     )
-    bot.edit_message_reply_markup(
-        chat_id=req.chat_id, message_id=orig_msg_id, reply_markup=keyboard
-    )
+    try:
+        bot.edit_message_media(
+            chat_id=req.chat_id,
+            message_id=orig_msg_id,
+            media=InputMediaDocument(media=file_id, caption=caption_text)
+        )
+        bot.edit_message_reply_markup(
+            chat_id=req.chat_id, message_id=orig_msg_id, reply_markup=keyboard
+        )
+    except Exception as e:
+        logger.error(f"Error editing message for PDF upload: {e}")
     return pdf.id
 
 
@@ -97,8 +108,15 @@ def handle_pdf_upload_task(
 def handle_vote_callback_task(callback_query_id: str, callback_data: str, voter_id: int, voter_username: str):
     action, pdf_id_str = callback_data.split(":")
     pdf_id = int(pdf_id_str)
-    pdf = PDFUpload.objects.select_related('request', 'user').get(id=pdf_id)
+    try:
+        pdf = PDFUpload.objects.select_related('request', 'user', 'request__user').get(id=pdf_id)
+    except PDFUpload.DoesNotExist:
+        logger.error(f"PDFUpload with id {pdf_id} does not exist. Cannot process vote.")
+        bot.answer_callback_query(callback_query_id=callback_query_id, text="Ошибка: PDF не найден.", show_alert=True)
+        return
+
     req = pdf.request
+
     if req.user and req.user.telegram_id == voter_id:
         bot.answer_callback_query(callback_query_id=callback_query_id, text="Вы не можете голосовать по своему запросу.", show_alert=True)
         return
@@ -111,31 +129,88 @@ def handle_vote_callback_task(callback_query_id: str, callback_data: str, voter_
         defaults={'username': voter_username}
     )
     vote_val = (action == "vote_valid")
-    Validation.objects.create(
-        pdf_upload=pdf,
-        user=voter,
-        vote=vote_val,
-        voted_at=timezone.now()
-    )
+
+    try:
+        Validation.objects.create(
+            pdf_upload=pdf,
+            user=voter,
+            vote=vote_val,
+            voted_at=timezone.now()
+        )
+    except IntegrityError: 
+        bot.answer_callback_query(callback_query_id=callback_query_id, text="Вы уже голосовали за этот PDF.", show_alert=True)
+        return
 
     votes = Validation.objects.filter(pdf_upload=pdf)
     total_votes = votes.count()
-    if total_votes >= 3:
-        correct = votes.filter(vote=True).count()
-        pdf.is_valid = correct > (total_votes - correct)
+
+    VALIDATION_THRESHOLD = 3 
+
+    if total_votes >= VALIDATION_THRESHOLD:
+        correct_votes = votes.filter(vote=True).count()
+        incorrect_votes = total_votes - correct_votes
+        
+        pdf.is_valid = correct_votes > incorrect_votes
         pdf.validated_at = timezone.now()
-        pdf.save()
+        pdf.save() 
+
+        if pdf.chat_message_id and pdf.delete_at:
+            current_time = timezone.now()
+            if pdf.delete_at > current_time:
+                delay_seconds = (pdf.delete_at - current_time).total_seconds()
+                if delay_seconds > 0:
+                    delete_message_task.apply_async(
+                        args=[pdf.request.chat_id, pdf.chat_message_id],
+                        countdown=int(delay_seconds) 
+                    )
+                    logger.info(
+                        f"Scheduled deletion for PDF message ID {pdf.chat_message_id} "
+                        f"in chat ID {pdf.request.chat_id} in {delay_seconds:.0f} seconds."
+                    )
+                else:
+                    logger.warning(
+                        f"PDF message ID {pdf.chat_message_id} in chat ID {pdf.request.chat_id} "
+                        f"has a delete_at ({pdf.delete_at}) not in the future. Deleting now."
+                    )
+                    delete_message_task.delay(pdf.request.chat_id, pdf.chat_message_id)
+            else:
+                logger.warning(
+                    f"PDF message ID {pdf.chat_message_id} in chat ID {pdf.request.chat_id} "
+                    f"has a delete_at ({pdf.delete_at}) that is not in the future. Deleting now."
+                )
+                delete_message_task.delay(pdf.request.chat_id, pdf.chat_message_id)
+        else:
+            logger.error(
+                f"Could not schedule deletion for PDF ID {pdf.id}. "
+                f"chat_message_id: {pdf.chat_message_id}, delete_at: {pdf.delete_at}"
+            )
+        
+        final_caption = ""
+        if pdf.is_valid:
+            final_caption = f"✅ PDF для DOI: {req.doi} был признан валидным."
+        else:
+            final_caption = f"❌ PDF для DOI: {req.doi} был признан невалидным."
+
+        try:
+            bot.edit_message_caption(
+                chat_id=req.chat_id,
+                message_id=pdf.chat_message_id, 
+                caption=final_caption,
+                reply_markup=None 
+            )
+        except Exception as e:
+            logger.error(f"Error editing message caption after validation: {e}")
+
+    bot.answer_callback_query(callback_query_id=callback_query_id, text="Спасибо, ваш голос учтен!")
     return pdf.id
 
 
 @shared_task
 def delete_message_task(chat_id, message_id):
     """Deletes a message after a delay, fetching config inside."""
-    config = Config.objects.first()
-    if not config or not config.bot_token:
-        logger.error("Bot token not configured in DB for delete_message_task.")
+    if not bot:
+        logger.error("Bot is not initialized in delete_message_task.")
         return
-    bot = Bot(token=config.bot_token)
     try:
         bot.delete_message(chat_id=chat_id, message_id=message_id)
         logger.info(f"Deleted message {message_id} from chat {chat_id}")
