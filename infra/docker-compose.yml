@@ -41,7 +41,7 @@ services:
     volumes:
       - ..:/app
     working_dir: /app/src
-    command: [ "poetry", "run", "celery", "-A", "src.celery_app", "worker", "--loglevel=info" ]
+    command: [ "poetry", "run", "celery", "-A", "src.celery_app", "worker", "-B", "--loglevel=info" ]
     networks:
       - bot
 
