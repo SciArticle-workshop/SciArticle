@@ -1,10 +1,10 @@
 import logging
 import os
-
 import requests
+
 from celery import shared_task
-from django.db import IntegrityError
 from django.utils import timezone
+
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaDocument
 
 from bot.models import ChatUser, PDFUpload, Request, Validation, Config
@@ -15,7 +15,6 @@ TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 if not TELEGRAM_TOKEN:
     logger.error("TELEGRAM_BOT_TOKEN is not set in environment variables")
 bot = Bot(token=TELEGRAM_TOKEN) if TELEGRAM_TOKEN else None
-
 
 SEND_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
@@ -29,7 +28,7 @@ def _send_sync(chat_id: int, text: str, reply_to: int = None):
 
 
 @shared_task
-def request_pdf_task(chat_id, message_id, doi):
+def request_pdf_task(chat_id, message_id, doi, message_search_id):
     chat_user, _ = ChatUser.objects.get_or_create(
         telegram_id=chat_id,
         defaults={'username': f"user_{chat_id}", 'is_in_bot': True}
@@ -52,10 +51,48 @@ def request_pdf_task(chat_id, message_id, doi):
         status='pending',
         chat_id=chat_id,
         user=chat_user,
-        message_id=message_id
+        message_id=message_id,
+        message_search_id=message_search_id
     )
     logger.info(f"Request recorded in the db {request_obj}")
     return request_obj.id
+
+
+@shared_task
+def run_check():
+    # Ищем все запросы, которые уже устарели, но статус еще не сменился
+    expired_requests = Request.objects.filter(
+        expires_at__lt=timezone.now(),
+        status='pending'
+    )
+    logger.info(
+        f"Update request status {expired_requests} on 'expired'"
+    )
+    for request in expired_requests:
+        data = {
+            'message_id': request.message_id,
+            'chat_id': request.chat_id,
+            'message_search_id': request.message_search_id
+        }
+
+        try:
+            # Отправляем запрос на сервер первого бота
+            response = requests.post(
+               f"{SOURCE_SERVER_URL}/api/request-pdf-expired/", data=data
+            )
+            logger.info(f"{response} received")
+            if response.status_code == 204:
+                # Обновляем статус запроса в базе
+                request.status = 'expired'
+                request.save()
+            else:
+                logger.error(
+                    f"Service is not available:{response.status_code}"
+                )
+
+        except Exception as e:
+            logger.error(f"En error occurred while sending request: {e}")
+    return True
 
 
 @shared_task
@@ -217,6 +254,7 @@ def delete_message_task(chat_id, message_id):
     except Exception as e:
         logger.error(f"Failed to delete message {message_id} from chat {chat_id}: {e}")
 
+
 @shared_task
 def schedule_pdf_deletion(chat_id: int, message_id: int, delay: int):
     """Schedules the deletion of a PDF-related message."""
@@ -224,6 +262,7 @@ def schedule_pdf_deletion(chat_id: int, message_id: int, delay: int):
     logger.info(
         f"Scheduled PDF message {message_id} in chat {chat_id} for deletion in {delay} seconds."
     )
+
 
 @shared_task
 def schedule_notification_deletion(chat_id: int, message_id: int, delay: int):

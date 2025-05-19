@@ -10,6 +10,7 @@ class RequestSerializer(serializers.Serializer):
     chat_id = serializers.IntegerField()
     message_id = serializers.IntegerField()
     doi = serializers.CharField(max_length=256)
+    message_search_id = serializers.IntegerField()
 
     def validate_doi(self, value):
         """

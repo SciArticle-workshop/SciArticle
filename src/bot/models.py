@@ -60,6 +60,7 @@ class Request(models.Model):
         related_name='requests'
     )
     message_id = models.IntegerField(default=0)
+    message_search_id = models.IntegerField(default=0)
 
     class Meta:
         verbose_name = 'запрос'
@@ -72,7 +73,7 @@ class Request(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f'{self.doi} {self.created_at}'
+        return f'id={self.pk} DOI={self.doi} created_at={self.created_at}'
 
 
 class PDFUpload(models.Model):

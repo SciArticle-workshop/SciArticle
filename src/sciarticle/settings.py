@@ -99,7 +99,8 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-SCI_SOURCE_BOT_ID = os.environ.get('SCI_SOURCE_BOT_ID')
+SCISOURCE_BOT_ID = os.environ.get('SCISOURCE_BOT_ID')
+SOURCE_SERVER_URL = os.environ.get('SOURCE_SERVER_URL')
 
 REDIS_HOST = os.environ.get('REDIS_HOST', 'redis')
 REDIS_PORT = os.environ.get('REDIS_PORT', '6379')
