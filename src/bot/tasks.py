@@ -5,13 +5,22 @@ import requests
 from celery import shared_task
 from django.utils import timezone
 
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaDocument
+from rest_framework.response import Response
+from rest_framework import status
+
+from telegram import (
+    Bot,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaDocument
+)
 
 from bot.models import ChatUser, PDFUpload, Request, Validation, Config
+from sciarticle.settings import SOURCE_SERVER_URL
 
 logger = logging.getLogger(__name__)
 
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '') 
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 if not TELEGRAM_TOKEN:
     logger.error("TELEGRAM_BOT_TOKEN is not set in environment variables")
 bot = Bot(token=TELEGRAM_TOKEN) if TELEGRAM_TOKEN else None
@@ -44,8 +53,12 @@ def request_pdf_task(chat_id, message_id, doi, message_search_id):
             f"Repeated request from user in chat_id={chat_id}: don't save to db"
         )
         return
+    
+    is_duplicate = Request.objects.filter(
+        doi=doi,
+        status=('pending')
+    ).exists()
 
-    # Если статьи нет в базе данных
     request_obj = Request.objects.create(
         doi=doi,
         status='pending',
@@ -55,7 +68,13 @@ def request_pdf_task(chat_id, message_id, doi, message_search_id):
         message_search_id=message_search_id
     )
     logger.info(f"Request recorded in the db {request_obj}")
-    return request_obj.id
+
+    # Проверка на наличие в базе данных запроса по DOI от разных пользователей и запись в бд при наличии
+    if is_duplicate:
+        return {'code': 'repeated request', 'id': request_obj.id}
+
+    # Если статьи нет в базе данных
+    return {'code': 'new request', 'id': request_obj.id}
 
 
 @shared_task
@@ -64,7 +83,7 @@ def run_check():
     expired_requests = Request.objects.filter(
         expires_at__lt=timezone.now(),
         status='pending'
-    )
+    ).order_by('id')
     logger.info(
         f"Update request status {expired_requests} on 'expired'"
     )
@@ -72,7 +91,8 @@ def run_check():
         data = {
             'message_id': request.message_id,
             'chat_id': request.chat_id,
-            'message_search_id': request.message_search_id
+            'message_search_id': request.message_search_id,
+            'doi': request.doi
         }
 
         try:
@@ -82,9 +102,13 @@ def run_check():
             )
             logger.info(f"{response} received")
             if response.status_code == 204:
-                # Обновляем статус запроса в базе
-                request.status = 'expired'
-                request.save()
+                Request.objects.filter(
+                    doi=request.doi,
+                    status='pending'
+                ).update(status='expired')
+                logger.info(
+                    f"All requests with DOI={request.doi} are expired"
+                )
             else:
                 logger.error(
                     f"Service is not available:{response.status_code}"

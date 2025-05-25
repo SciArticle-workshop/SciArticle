@@ -41,7 +41,28 @@ services:
     volumes:
       - ..:/app
     working_dir: /app/src
-    command: [ "poetry", "run", "celery", "-A", "src.celery_app", "worker", "-B", "--loglevel=info" ]
+    command: [ "poetry", "run", "celery", "-A", "src.celery_app", "worker", "--loglevel=info" ]
+    networks:
+      - bot
+
+  celery_beat:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    container_name: celery_beat
+    restart: always
+    depends_on:
+      - redis
+      - postgres
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - DJANGO_SETTINGS_MODULE=sciarticle.settings
+    volumes:
+      - ..:/app
+    working_dir: /app/src
+    command: [ "poetry", "run", "celery", "-A", "src.celery_app", "beat", "--loglevel=info" ]
     networks:
       - bot
 
