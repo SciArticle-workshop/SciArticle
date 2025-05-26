@@ -2,8 +2,10 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-from .serializers import RequestSerializer
+
+from .serializers import RequestSerializer, RequestUpdateSerializer
 from bot.tasks import request_pdf_task
+from bot.models import Request
 
 import logging
 
@@ -24,6 +26,29 @@ class RequestAPIView(APIView):
                 f"Request received: for article doi={doi} from chat_id={chat_id}"
             )
 
-            request_pdf_task(chat_id, message_id, doi, message_search_id)
-            return Response(status=status.HTTP_201_CREATED)
+            result = request_pdf_task(
+                chat_id,
+                message_id,
+                doi,
+                message_search_id
+            )
+            if not result:
+                return Response(status=status.HTTP_409_CONFLICT)
+            return Response(result, status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, pk):
+        logger.info(
+            f"Request received: for request id={pk}"
+        )
+
+        req = Request.objects.get(pk=pk)
+        serializer = RequestUpdateSerializer(data=request.data)
+        if serializer.is_valid():
+            message_search_id = serializer.validated_data['message_search_id']
+
+            req.message_search_id = message_search_id
+            req.save()
+
+            return Response(status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

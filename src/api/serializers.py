@@ -19,3 +19,6 @@ class RequestSerializer(serializers.Serializer):
         if not DOI_REGEX.match(value):
             raise serializers.ValidationError("Invalid format DOI")
         return value
+
+class RequestUpdateSerializer(serializers.Serializer):
+    message_search_id = serializers.IntegerField()
