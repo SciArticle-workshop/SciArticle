@@ -6,7 +6,7 @@ def setup_bot():
     """Set up the Telegram bot with all handlers."""
     # Import handlers here to avoid circular imports
     from src.bot.handlers.callback_handlers import handle_pdf_verification
-    from src.bot.handlers.file_handlers import handle_pdf_file
+    from src.bot.handlers.handlers import handle_pdf_file
 
     # Create the Application
     application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()

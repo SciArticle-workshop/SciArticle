@@ -5,9 +5,6 @@ import requests
 from celery import shared_task
 from django.utils import timezone
 
-from rest_framework.response import Response
-from rest_framework import status
-
 from telegram import (
     Bot,
     InlineKeyboardButton,
@@ -15,8 +12,11 @@ from telegram import (
     InputMediaDocument
 )
 
-from bot.models import ChatUser, PDFUpload, Request, Validation, Config
+from bot.models import ChatUser, PDFUpload, Request, Validation
 from sciarticle.settings import SOURCE_SERVER_URL
+from sciarticle.settings import SEARCH_CHAT_ID
+
+from .utils import async_download_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,10 @@ bot = Bot(token=TELEGRAM_TOKEN) if TELEGRAM_TOKEN else None
 
 SEND_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
+PDF_FILE = './pdf_files'
+os.makedirs(PDF_FILE, exist_ok=True)
+
+DOI_REGEX = r"10\.\d{4,9}[\s][-._;()\s:A-Za-z0-9]+"
 
 def _send_sync(chat_id: int, text: str, reply_to: int = None):
     payload = {'chat_id': chat_id, 'text': text}
@@ -117,6 +121,71 @@ def run_check():
         except Exception as e:
             logger.error(f"En error occurred while sending request: {e}")
     return True
+
+
+async def check_pdf_file(file_id, file_name, user_id, message_id, doi):
+    """
+    Проверяет есть ли запрос на эту статью по DOI. 
+    Сохраняет файл. 
+    Отправляет сообщение, с просьбой проверить PDF.
+    """
+    try:
+        # Проверяем есть ли в базе данных запрос со статусом - в ожидании
+        request = await Request.objects.filter(doi=doi, status='pending').afirst()
+        # Если запроса нет, то сообщение с pdf - удалять
+        if not request:
+            logger.info(f"No request with status pending for article with DOI: {doi}")
+            await bot.delete_message(chat_id=SEARCH_CHAT_ID, message_id=message_id)
+            return
+        
+        # Проверяем есть ли в базе данных уже файл с таким именем и состоянием в проверке
+        pdf_file = await PDFUpload.objects.filter(request=request, state='uploaded').afirst()
+        if pdf_file:
+            logger.info(f"File for {request} has already been uploaded and is awaiting verification")
+            await bot.delete_message(chat_id=SEARCH_CHAT_ID, message_id=message_id)
+            return
+
+        file_path = os.path.join(PDF_FILE, file_name)
+        result = await async_download_pdf(bot, file_id, file_path)
+
+        if not result:
+            logger.warning(f"Failed to save file: {file_name}")
+            return
+
+        # Записываем в бд информацию о файле
+        user, _ = await ChatUser.objects.aget_or_create(
+            telegram_id=user_id,
+            defaults={'username': f"user_{user_id}", 'is_in_bot': True}
+        )
+
+        pdf_upload = await PDFUpload.objects.acreate(
+            file_id=file_id,
+            request=request,
+            user=user,
+            message_id=message_id,
+            state='uploaded',
+            path=file_path
+        )
+        logger.info(f"PDF information is recorded in the db {pdf_upload}")
+
+        # Если есть запрос на статью с таким DOI отправляется сообщение с кнопками в ответ на PDF
+        message = await bot.send_message(
+            chat_id=SEARCH_CHAT_ID,
+            text="Пожалуйста, проверьте PDF",
+            reply_to_message_id=message_id,
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✅ Всё верно", callback_data=f"PDF_CORRECT_{doi}"),
+                    InlineKeyboardButton("❌ PDF неверный", callback_data=f"PDF_INCORRECT_{doi}")
+                ]
+            ])
+        )
+        pdf_upload.reply_to_message_id = message.id
+        await pdf_upload.asave()
+
+        logger.info(f"Verification message sent for article, DOI: {doi}")
+    except Exception as e:
+        logger.error(f"Error processing PDF with file_name = {file_name}, DOI = {doi}: {e}")
 
 
 @shared_task

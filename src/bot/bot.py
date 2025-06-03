@@ -20,7 +20,7 @@ from telegram.ext import (
 )
 
 from bot.handlers.callback_handlers import handle_vote_callback
-from bot.handlers.file_handlers import handle_pdf_upload
+from bot.handlers.handlers import pdf_file_handler
 from bot.models import ChatUser, Config, Subscription
 
 logging.basicConfig(
@@ -143,10 +143,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("help", help_command))
-
-    application.add_handler(MessageHandler(
-        filters.Document.PDF, handle_pdf_upload
-    ))
+    application.add_handler(MessageHandler(filters.Document.PDF, pdf_file_handler))
 
     application.add_handler(CallbackQueryHandler(
         handle_vote_callback, pattern="^vote_"
@@ -159,6 +156,7 @@ def main():
         )
 
     application.add_error_handler(error_handler)
+
 
     application.run_polling()
 

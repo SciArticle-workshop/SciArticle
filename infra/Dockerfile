@@ -10,6 +10,4 @@ COPY ./src /app/src
 
 WORKDIR /app/src
 
-ENTRYPOINT ["/app/src/entrypoint.sh"]
-
 CMD ["poetry", "run", "celery", "-A", "celery_app", "worker", "--loglevel=info"]

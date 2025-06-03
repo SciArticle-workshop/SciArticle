@@ -101,6 +101,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 SCISOURCE_BOT_ID = os.environ.get('SCISOURCE_BOT_ID')
 SOURCE_SERVER_URL = os.environ.get('SOURCE_SERVER_URL')
+SEARCH_CHAT_ID = os.environ.get('SEARCH_CHAT_ID')
 
 REDIS_HOST = os.environ.get('REDIS_HOST', 'redis')
 REDIS_PORT = os.environ.get('REDIS_PORT', '6379')
