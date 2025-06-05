@@ -5,18 +5,17 @@ import requests
 from celery import shared_task
 from django.utils import timezone
 
-from rest_framework.response import Response
-from rest_framework import status
-
 from telegram import (
     Bot,
     InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    InputMediaDocument
+    InlineKeyboardMarkup
 )
 
-from bot.models import ChatUser, PDFUpload, Request, Validation, Config
+from bot.models import ChatUser, PDFUpload, Request, Validation
 from sciarticle.settings import SOURCE_SERVER_URL
+from sciarticle.settings import SEARCH_CHAT_ID
+
+from .utils import async_download_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +26,10 @@ bot = Bot(token=TELEGRAM_TOKEN) if TELEGRAM_TOKEN else None
 
 SEND_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
+PDF_FILE = './pdf_files'
+os.makedirs(PDF_FILE, exist_ok=True)
 
-def _send_sync(chat_id: int, text: str, reply_to: int = None):
-    payload = {'chat_id': chat_id, 'text': text}
-    if reply_to is not None:
-        payload['reply_to_message_id'] = reply_to
-
-    requests.post(SEND_URL, json=payload, timeout=5)
+DOI_REGEX = r"10\.\d{4,9}[\s][-._;()\s:A-Za-z0-9]+"
 
 
 @shared_task
@@ -119,50 +115,69 @@ def run_check():
     return True
 
 
-@shared_task
-def handle_pdf_upload_task(
-    orig_msg_id: int, req_id: int,
-    file_id: str, file_name: str,
-    uploader_id: int, uploader_username: str
-):
-    req = Request.objects.get(pk=req_id)
-    chat_user, _ = ChatUser.objects.get_or_create(
-        telegram_id=uploader_id,
-        defaults={'username': uploader_username}
-    )
-    
-    safe_file_name = "".join(c if c.isalnum() or c in ('.', '_', '-') else '_' for c in file_name)
-
-    pdf = PDFUpload.objects.create(
-        request=req,
-        file=f"articles/{req.id}_{safe_file_name}",
-        uploaded_at=timezone.now(),
-        user=chat_user,
-        chat_message_id=orig_msg_id
-    )
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ Все верно", callback_data=f"vote_valid:{pdf.id}"),
-            InlineKeyboardButton("❌ PDF неверный", callback_data=f"vote_invalid:{pdf.id}"),
-        ]
-    ])
-
-    caption_text = (
-        f"Пожалуйста, проверьте PDF для статьи DOI: {req.doi}\n"
-        f"Загружен пользователем: @{uploader_username if uploader_username else uploader_id}"
-    )
+async def check_pdf_file(file_id, file_name, user_id, message_id, doi):
+    """
+    Проверяет есть ли запрос на эту статью по DOI. 
+    Сохраняет файл. 
+    Отправляет сообщение, с просьбой проверить PDF.
+    """
     try:
-        bot.edit_message_media(
-            chat_id=req.chat_id,
-            message_id=orig_msg_id,
-            media=InputMediaDocument(media=file_id, caption=caption_text)
+        # Проверяем есть ли в базе данных запрос со статусом - в ожидании
+        request = await Request.objects.filter(doi=doi, status='pending').afirst()
+        # Если запроса нет, то сообщение с pdf - удалять
+        if not request:
+            logger.info(f"No request with status pending for article with DOI: {doi}")
+            await bot.delete_message(chat_id=SEARCH_CHAT_ID, message_id=message_id)
+            return
+        
+        # Проверяем есть ли в базе данных уже файл с таким именем и состоянием в проверке
+        pdf_file = await PDFUpload.objects.filter(request=request, state='uploaded').afirst()
+        if pdf_file:
+            logger.info(f"File for {request} has already been uploaded and is awaiting verification")
+            await bot.delete_message(chat_id=SEARCH_CHAT_ID, message_id=message_id)
+            return
+
+        file_path = os.path.join(PDF_FILE, file_name)
+        result = await async_download_pdf(bot, file_id, file_path)
+
+        if not result:
+            logger.warning(f"Failed to save file: {file_name}")
+            return
+
+        # Записываем в бд информацию о файле
+        user, _ = await ChatUser.objects.aget_or_create(
+            telegram_id=user_id,
+            defaults={'username': f"user_{user_id}", 'is_in_bot': True}
         )
-        bot.edit_message_reply_markup(
-            chat_id=req.chat_id, message_id=orig_msg_id, reply_markup=keyboard
+
+        pdf_upload = await PDFUpload.objects.acreate(
+            file_id=file_id,
+            request=request,
+            user=user,
+            message_id=message_id,
+            state='uploaded',
+            path=file_path
         )
+        logger.info(f"PDF information is recorded in the db {pdf_upload}")
+
+        # Если есть запрос на статью с таким DOI отправляется сообщение с кнопками в ответ на PDF
+        message = await bot.send_message(
+            chat_id=SEARCH_CHAT_ID,
+            text="Пожалуйста, проверьте PDF",
+            reply_to_message_id=message_id,
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✅ Всё верно", callback_data=f"PDF_CORRECT_{doi}"),
+                    InlineKeyboardButton("❌ PDF неверный", callback_data=f"PDF_INCORRECT_{doi}")
+                ]
+            ])
+        )
+        pdf_upload.reply_to_message_id = message.id
+        await pdf_upload.asave()
+
+        logger.info(f"Verification message sent for article, DOI: {doi}")
     except Exception as e:
-        logger.error(f"Error editing message for PDF upload: {e}")
-    return pdf.id
+        logger.error(f"Error processing PDF with file_name = {file_name}, DOI = {doi}: {e}")
 
 
 @shared_task

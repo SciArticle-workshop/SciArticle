@@ -31,10 +31,10 @@ class RequestAdmin(admin.ModelAdmin):
 class PDFUploadAdmin(admin.ModelAdmin):
     """Админка для модели PDFUpload."""
 
-    list_display = ['request', 'file', 'uploaded_at', 'validated_at', 'is_valid', 'delete_at']
-    list_filter = ['is_valid', 'uploaded_at']
+    list_display = ['request', 'path', 'created_at', 'validated_at', 'is_valid', 'delete_at']
+    list_filter = ['is_valid', 'created_at']
     search_fields = ['request__doi']
-    readonly_fields = ['uploaded_at', 'delete_at']
+    readonly_fields = ['created_at', 'delete_at']
 
 @admin.register(Validation)
 class ValidationAdmin(admin.ModelAdmin):

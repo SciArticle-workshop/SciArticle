@@ -11,6 +11,11 @@ STATUS = (
     ('removed', 'removed')
 )
 
+STATE = (
+    ('uploaded', 'uploaded'),
+    ('validated', 'validated')
+)
+
 TYPE = (
     ('upload', 'upload'),
     ('validation', 'validation')
@@ -80,26 +85,29 @@ class PDFUpload(models.Model):
     """Загрузка PDF."""
 
     request = models.ForeignKey(Request, on_delete=models.CASCADE, related_name='uploads')
-    file = models.FileField(upload_to='pdfs/')
-    uploaded_at = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(ChatUser, on_delete=models.CASCADE, related_name='uploads')
+    path = models.CharField(default='')
+    created_at = models.DateTimeField(default=timezone.now)
     validated_at = models.DateTimeField(null=True, blank=True)
     is_valid = models.BooleanField(null=True, blank=True)
     delete_at = models.DateTimeField(null=True, blank=True)
-    chat_message_id = models.BigIntegerField()
-    user = models.ForeignKey(ChatUser, on_delete=models.CASCADE, related_name='uploads')
+    message_id = models.BigIntegerField(default=0)
+    reply_to_message_id = models.BigIntegerField(default=0)
+    file_id = models.CharField(default='')
+    state = models.CharField(
+        max_length=25,
+        choices=STATE,
+        default=''
+    )
+
 
     class Meta:
         verbose_name = 'загрузка PDF'
         verbose_name_plural = 'Загрузки PDF'
 
-    def save(self, *args, **kwargs):
-        if not self.pk:
-            if self.validated_at:
-                self.delete_at = self.validated_at + timedelta(days=3)
-        super().save(*args, **kwargs)
 
     def __str__(self):
-        return f'{self.file} {self.uploaded_at}'
+        return f'{self.path} {self.created_at}'
 
 
 class Validation(models.Model):
