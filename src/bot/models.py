@@ -8,12 +8,13 @@ STATUS = (
     ('pending', 'pending'),
     ('completed', 'completed'),
     ('expired', 'expired'),
-    ('removed', 'removed')
+    ('removed', 'removed'),
 )
 
 STATE = (
     ('uploaded', 'uploaded'),
-    ('validated', 'validated')
+    ('validated', 'validated'),
+    ('deletated', 'deleted'),
 )
 
 TYPE = (
@@ -74,7 +75,7 @@ class Request(models.Model):
     def save(self, *args, **kwargs):
         if not self.pk:
             self.created_at = timezone.now()
-            self.expires_at = self.created_at + timedelta(days=3)
+            self.expires_at = self.created_at + timedelta(hours=47)  # Так как на удаление сообщения telegram дает до 48 часов
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -84,8 +85,12 @@ class Request(models.Model):
 class PDFUpload(models.Model):
     """Загрузка PDF."""
 
-    request = models.ForeignKey(Request, on_delete=models.CASCADE, related_name='uploads')
-    user = models.ForeignKey(ChatUser, on_delete=models.CASCADE, related_name='uploads')
+    request = models.ForeignKey(
+        Request, on_delete=models.CASCADE, related_name='uploads'
+    )
+    user = models.ForeignKey(
+        ChatUser, on_delete=models.CASCADE, related_name='uploads'
+    )
     path = models.CharField(default='')
     created_at = models.DateTimeField(default=timezone.now)
     validated_at = models.DateTimeField(null=True, blank=True)
@@ -100,11 +105,15 @@ class PDFUpload(models.Model):
         default=''
     )
 
-
     class Meta:
         verbose_name = 'загрузка PDF'
         verbose_name_plural = 'Загрузки PDF'
 
+    def save(self, *args, **kwargs):
+        if not self.pk:
+            self.created_at = timezone.now()
+            self.delete_at = self.created_at + timedelta(hours=47)  # Так как на удаление сообщения telegram дает до 48 часов 
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f'{self.path} {self.created_at}'
@@ -113,8 +122,12 @@ class PDFUpload(models.Model):
 class Validation(models.Model):
     """Валидация PDF."""
 
-    pdf_upload = models.ForeignKey(PDFUpload, on_delete=models.CASCADE, related_name='validations')
-    user = models.ForeignKey(ChatUser, on_delete=models.CASCADE, related_name='validations')
+    pdf_upload = models.ForeignKey(
+        PDFUpload, on_delete=models.CASCADE, related_name='validations'
+    )
+    user = models.ForeignKey(
+        ChatUser, on_delete=models.CASCADE, related_name='validations'
+    )
     vote = models.BooleanField()
     voted_at = models.DateTimeField(auto_now_add=True)
 

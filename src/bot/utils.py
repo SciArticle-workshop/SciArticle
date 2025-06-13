@@ -4,6 +4,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 async def async_download_pdf(bot: Bot, file_id: str, file_path: str):
     try:
         pdf_file = await bot.get_file(file_id)

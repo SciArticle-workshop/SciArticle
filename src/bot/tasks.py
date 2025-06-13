@@ -1,9 +1,11 @@
 import logging
 import os
 import requests
+import asyncio
 
 from celery import shared_task
 from django.utils import timezone
+from django.db import IntegrityError
 
 from telegram import (
     Bot,
@@ -43,13 +45,13 @@ def request_pdf_task(chat_id, message_id, doi, message_search_id):
     if Request.objects.filter(
         chat_id=chat_id,
         doi=doi,
-        status__in=('pending', 'completed')
+        status=('pending')
     ).exists():
         logger.info(
             f"Repeated request from user in chat_id={chat_id}: don't save to db"
         )
         return
-    
+
     is_duplicate = Request.objects.filter(
         doi=doi,
         status=('pending')
@@ -73,6 +75,32 @@ def request_pdf_task(chat_id, message_id, doi, message_search_id):
     return {'code': 'new request', 'id': request_obj.id}
 
 
+def send_request(request):
+    data = {
+            'message_id': request.message_id,
+            'chat_id': request.chat_id,
+            'message_search_id': request.message_search_id
+        }
+    try:
+        # Отправляем запрос на сервер первого бота
+        response = requests.post(
+            f"{SOURCE_SERVER_URL}/api/request-pdf-expired/", data=data
+        )
+        logger.info(f"{response} received")
+        if response.status_code == 204:
+            logger.info("Information about request/requests sent successfully")
+            return True
+        else:
+            logger.error(
+                f"Service is not available:{response.status_code}"
+            )
+            return False
+
+    except Exception as e:
+        logger.error(f"En error occurred while sending request: {e}")
+        return False
+
+
 @shared_task
 def run_check():
     # Ищем все запросы, которые уже устарели, но статус еще не сменился
@@ -84,57 +112,49 @@ def run_check():
         f"Update request status {expired_requests} on 'expired'"
     )
     for request in expired_requests:
-        data = {
-            'message_id': request.message_id,
-            'chat_id': request.chat_id,
-            'message_search_id': request.message_search_id,
-            'doi': request.doi
-        }
-
-        try:
-            # Отправляем запрос на сервер первого бота
-            response = requests.post(
-               f"{SOURCE_SERVER_URL}/api/request-pdf-expired/", data=data
-            )
-            logger.info(f"{response} received")
-            if response.status_code == 204:
-                Request.objects.filter(
-                    doi=request.doi,
-                    status='pending'
-                ).update(status='expired')
-                logger.info(
-                    f"All requests with DOI={request.doi} are expired"
-                )
-            else:
-                logger.error(
-                    f"Service is not available:{response.status_code}"
-                )
-
-        except Exception as e:
-            logger.error(f"En error occurred while sending request: {e}")
+        is_ok = send_request(request)
+        if is_ok:
+            Request.objects.filter(
+                doi=request.doi,
+                status='pending'
+            ).update(status='expired')
     return True
 
 
 async def check_pdf_file(file_id, file_name, user_id, message_id, doi):
     """
-    Проверяет есть ли запрос на эту статью по DOI. 
-    Сохраняет файл. 
+    Проверяет есть ли запрос на эту статью по DOI.
+    Сохраняет файл.
     Отправляет сообщение, с просьбой проверить PDF.
     """
     try:
         # Проверяем есть ли в базе данных запрос со статусом - в ожидании
-        request = await Request.objects.filter(doi=doi, status='pending').afirst()
+        request = await Request.objects.filter(
+            doi=doi, status='pending'
+        ).afirst()
         # Если запроса нет, то сообщение с pdf - удалять
         if not request:
-            logger.info(f"No request with status pending for article with DOI: {doi}")
-            await bot.delete_message(chat_id=SEARCH_CHAT_ID, message_id=message_id)
+            logger.info(
+                f"No request with status pending for article with DOI: {doi}"
+            )
+            await bot.delete_message(
+                chat_id=SEARCH_CHAT_ID,
+                message_id=message_id
+            )
             return
-        
         # Проверяем есть ли в базе данных уже файл с таким именем и состоянием в проверке
-        pdf_file = await PDFUpload.objects.filter(request=request, state='uploaded').afirst()
+        pdf_file = await PDFUpload.objects.filter(
+            request=request,
+            state='uploaded'
+        ).afirst()
         if pdf_file:
-            logger.info(f"File for {request} has already been uploaded and is awaiting verification")
-            await bot.delete_message(chat_id=SEARCH_CHAT_ID, message_id=message_id)
+            logger.info(
+                f"File for {request} has already been uploaded and is awaiting verification"
+            )
+            await bot.delete_message(
+                chat_id=SEARCH_CHAT_ID,
+                message_id=message_id
+            )
             return
 
         file_path = os.path.join(PDF_FILE, file_name)
@@ -160,6 +180,9 @@ async def check_pdf_file(file_id, file_name, user_id, message_id, doi):
         )
         logger.info(f"PDF information is recorded in the db {pdf_upload}")
 
+        # Отправляем post-запрос в SciSourceBot (нужно удалить сообщение с запросом на статью)
+        send_request(request)
+
         # Если есть запрос на статью с таким DOI отправляется сообщение с кнопками в ответ на PDF
         message = await bot.send_message(
             chat_id=SEARCH_CHAT_ID,
@@ -167,146 +190,195 @@ async def check_pdf_file(file_id, file_name, user_id, message_id, doi):
             reply_to_message_id=message_id,
             reply_markup=InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("✅ Всё верно", callback_data=f"PDF_CORRECT_{doi}"),
-                    InlineKeyboardButton("❌ PDF неверный", callback_data=f"PDF_INCORRECT_{doi}")
+                    InlineKeyboardButton(
+                        "✅ Всё верно",
+                        callback_data=f"vote_valid:{pdf_upload.id}"
+                    ),
+                    InlineKeyboardButton(
+                        "❌ PDF неверный",
+                        callback_data=f"vote_invalid:{pdf_upload.id}"
+                    )
                 ]
             ])
         )
         pdf_upload.reply_to_message_id = message.id
         await pdf_upload.asave()
-
         logger.info(f"Verification message sent for article, DOI: {doi}")
     except Exception as e:
-        logger.error(f"Error processing PDF with file_name = {file_name}, DOI = {doi}: {e}")
+        logger.error(
+            f"Error processing PDF with file_name={file_name}, DOI={doi}: {e}"
+        )
 
 
-@shared_task
-def handle_vote_callback_task(callback_query_id: str, callback_data: str, voter_id: int, voter_username: str):
+def send_pdf(pdfupload):
+    request = pdfupload.request
+    data = {
+        'message_id': pdfupload.message_id,
+        'chat_id': request.chat_id,
+        'doi': request.doi
+    }
+    with open(pdfupload.path, 'rb') as f:
+        files = {
+            'file': ('document.pdf', f, 'application/pdf')
+        }
+
+        response = requests.post(
+            f"{SOURCE_SERVER_URL}/api/upload-pdf/",
+            data=data,
+            files=files
+        )
+        if response.status_code == 200:
+            logger.info("File and data sent successfully")
+        else:
+            logger.error(
+                f"Service is not available:{response.status_code}"
+            )
+
+
+async def handle_vote_callback_task(
+        callback_query_id: str,
+        callback_data: str, voter_id: int,
+        voter_username: str):
     action, pdf_id_str = callback_data.split(":")
     pdf_id = int(pdf_id_str)
+    logger.info(f'vote_callback received: action={action}, pdf_id={pdf_id}')
     try:
-        pdf = PDFUpload.objects.select_related('request', 'user', 'request__user').get(id=pdf_id)
+        pdf = await PDFUpload.objects.select_related(
+            'request', 'user', 'request__user'
+        ).aget(id=pdf_id)
     except PDFUpload.DoesNotExist:
-        logger.error(f"PDFUpload with id {pdf_id} does not exist. Cannot process vote.")
-        bot.answer_callback_query(callback_query_id=callback_query_id, text="Ошибка: PDF не найден.", show_alert=True)
+        logger.error(
+            f"PDFUpload with id {pdf_id} does not exist. Cannot process vote."
+        )
+        await bot.answer_callback_query(
+            callback_query_id=callback_query_id,
+            text="Ошибка: PDF не найден.",
+            show_alert=True
+        )
         return
 
     req = pdf.request
 
     if req.user and req.user.telegram_id == voter_id:
-        bot.answer_callback_query(callback_query_id=callback_query_id, text="Вы не можете голосовать по своему запросу.", show_alert=True)
-        return
-    if pdf.user.telegram_id == voter_id:
-        bot.answer_callback_query(callback_query_id=callback_query_id, text="Вы не можете голосовать за свой PDF.", show_alert=True)
+        await bot.answer_callback_query(
+            callback_query_id=callback_query_id,
+            text="Вы не можете голосовать по своему запросу.",
+            show_alert=True
+        )
         return
 
-    voter, _ = ChatUser.objects.get_or_create(
+    if pdf.user.telegram_id == voter_id:
+        await bot.answer_callback_query(
+            callback_query_id=callback_query_id,
+            text="Вы не можете голосовать за свой PDF.",
+            show_alert=True
+        )
+        return
+
+    voter, _ = await ChatUser.objects.aget_or_create(
         telegram_id=voter_id,
         defaults={'username': voter_username}
     )
     vote_val = (action == "vote_valid")
 
     try:
-        Validation.objects.create(
+        await Validation.objects.acreate(
             pdf_upload=pdf,
             user=voter,
             vote=vote_val,
             voted_at=timezone.now()
         )
-    except IntegrityError: 
-        bot.answer_callback_query(callback_query_id=callback_query_id, text="Вы уже голосовали за этот PDF.", show_alert=True)
+    except IntegrityError as e:
+        logger.error(f"Error: {e}")
+        await bot.answer_callback_query(
+            callback_query_id=callback_query_id,
+            text="Вы уже голосовали за этот PDF.",
+            show_alert=True
+        )
         return
 
     votes = Validation.objects.filter(pdf_upload=pdf)
-    total_votes = votes.count()
+    votes_true = await votes.filter(vote=True).acount()
+    votes_false = await votes.filter(vote=False).acount()
+    logger.info(f'votes_true: {votes_true}')
+    logger.info(f'votes_false: {votes_false}')
 
-    VALIDATION_THRESHOLD = 3 
-
-    if total_votes >= VALIDATION_THRESHOLD:
-        correct_votes = votes.filter(vote=True).count()
-        incorrect_votes = total_votes - correct_votes
-        
-        pdf.is_valid = correct_votes > incorrect_votes
+    if votes_true >= 2 or votes_false >= 2:
+        pdf.is_valid = votes_true >= 2
         pdf.validated_at = timezone.now()
-        pdf.save() 
+        await pdf.asave()
 
-        if pdf.chat_message_id and pdf.delete_at:
-            current_time = timezone.now()
-            if pdf.delete_at > current_time:
-                delay_seconds = (pdf.delete_at - current_time).total_seconds()
-                if delay_seconds > 0:
-                    delete_message_task.apply_async(
-                        args=[pdf.request.chat_id, pdf.chat_message_id],
-                        countdown=int(delay_seconds) 
-                    )
-                    logger.info(
-                        f"Scheduled deletion for PDF message ID {pdf.chat_message_id} "
-                        f"in chat ID {pdf.request.chat_id} in {delay_seconds:.0f} seconds."
-                    )
-                else:
-                    logger.warning(
-                        f"PDF message ID {pdf.chat_message_id} in chat ID {pdf.request.chat_id} "
-                        f"has a delete_at ({pdf.delete_at}) not in the future. Deleting now."
-                    )
-                    delete_message_task.delay(pdf.request.chat_id, pdf.chat_message_id)
-            else:
-                logger.warning(
-                    f"PDF message ID {pdf.chat_message_id} in chat ID {pdf.request.chat_id} "
-                    f"has a delete_at ({pdf.delete_at}) that is not in the future. Deleting now."
-                )
-                delete_message_task.delay(pdf.request.chat_id, pdf.chat_message_id)
-        else:
-            logger.error(
-                f"Could not schedule deletion for PDF ID {pdf.id}. "
-                f"chat_message_id: {pdf.chat_message_id}, delete_at: {pdf.delete_at}"
-            )
-        
-        final_caption = ""
+        final_text = ""
         if pdf.is_valid:
-            final_caption = f"✅ PDF для DOI: {req.doi} был признан валидным."
+            final_text = f"✅ PDF был признан валидным. https://doi.org/{req.doi}"
         else:
-            final_caption = f"❌ PDF для DOI: {req.doi} был признан невалидным."
+            final_text = f"❌ PDF был признан невалидным. https://doi.org/{req.doi}"
 
         try:
-            bot.edit_message_caption(
-                chat_id=req.chat_id,
-                message_id=pdf.chat_message_id, 
-                caption=final_caption,
-                reply_markup=None 
+            pdf.state = 'validated'
+            await pdf.asave()
+            await bot.edit_message_text(
+                chat_id=SEARCH_CHAT_ID,
+                message_id=pdf.reply_to_message_id,
+                text=final_text,
+                reply_markup=None
             )
+            if pdf.is_valid:
+                # Отправляем post-запрос (содержимое файл pdf и текстовые данные)
+                send_pdf(pdf)
+                # Ищем все запросы по этой статье. Так как статья найдена и проверена, то меняем статус запроса на - завершенный
+                await Request.objects.filter(
+                    doi=pdf.request.doi,
+                    status='pending'
+                ).aupdate(status='completed')
+                logger.info("Update request status on 'completed'")
         except Exception as e:
-            logger.error(f"Error editing message caption after validation: {e}")
-
-    bot.answer_callback_query(callback_query_id=callback_query_id, text="Спасибо, ваш голос учтен!")
+            logger.error(
+                f"Error editing message caption after validation: {e}"
+            )
+    await bot.answer_callback_query(
+        callback_query_id=callback_query_id, text="Спасибо, ваш голос учтен!"
+    )
     return pdf.id
 
 
-@shared_task
-def delete_message_task(chat_id, message_id):
-    """Deletes a message after a delay, fetching config inside."""
-    if not bot:
-        logger.error("Bot is not initialized in delete_message_task.")
-        return
-    try:
-        bot.delete_message(chat_id=chat_id, message_id=message_id)
-        logger.info(f"Deleted message {message_id} from chat {chat_id}")
-    except Exception as e:
-        logger.error(f"Failed to delete message {message_id} from chat {chat_id}: {e}")
+def async_to_sync(awaitable):
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(awaitable)
 
 
 @shared_task
-def schedule_pdf_deletion(chat_id: int, message_id: int, delay: int):
-    """Schedules the deletion of a PDF-related message."""
-    delete_message_task.apply_async(args=[chat_id, message_id], countdown=delay)
-    logger.info(
-        f"Scheduled PDF message {message_id} in chat {chat_id} for deletion in {delay} seconds."
-    )
+def run_check_and_delete_pdf():
+    # Ищем все pdf, которые пора удалить из чата (прошло 47 часов)
+    files_uploaded = PDFUpload.objects.filter(
+        delete_at__lt=timezone.now(),
+        state__in=['uploaded', 'validated']
+        ).order_by('id')
+    for pdf in files_uploaded:
+        try:
+            logger.info(f"Удаляем {pdf.message_id} в чате {SEARCH_CHAT_ID}")
+            async_to_sync(bot.delete_messages(
+                chat_id=SEARCH_CHAT_ID,
+                message_ids=[
+                    int(pdf.message_id),
+                    int(pdf.reply_to_message_id)
+                ]
+            ))
+            if pdf.state == 'uploaded':
+                file_path = pdf.path
+                # Проверяем есть ли файл, если еть - удаляем
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    logger.info(f"File deleted: {file_path}")
+                else:
+                    logger.warning(f"File not found: {file_path}")
 
-
-@shared_task
-def schedule_notification_deletion(chat_id: int, message_id: int, delay: int):
-    """Schedules the deletion of a notification message."""
-    delete_message_task.apply_async(args=[chat_id, message_id], countdown=delay)
-    logger.info(
-        f"Scheduled notification message {message_id} in chat {chat_id} for deletion in {delay} seconds."
-    )
+            pdf.state = 'deleted'
+            pdf.save()
+            logger.info(
+                f"Message deleted: {pdf.message_id} (PDF ID: {pdf.id})"
+            )
+        except Exception as e:
+            logger.error(
+                f"Error deleting message {pdf.message_id}: {e}"
+            )
