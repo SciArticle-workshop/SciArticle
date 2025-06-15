@@ -20,5 +20,6 @@ class RequestSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid format DOI")
         return value
 
+
 class RequestUpdateSerializer(serializers.Serializer):
     message_search_id = serializers.IntegerField()

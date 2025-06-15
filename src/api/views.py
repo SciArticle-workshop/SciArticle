@@ -23,7 +23,7 @@ class RequestAPIView(APIView):
             message_search_id = serializer.validated_data['message_search_id']
 
             logger.info(
-                f"Request received: for article doi={doi} from chat_id={chat_id}"
+                f"Request received: for article doi:{doi} from chat_id:{chat_id}"
             )
 
             result = request_pdf_task(

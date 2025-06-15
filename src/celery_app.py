@@ -18,6 +18,10 @@ app.conf.beat_schedule = {
         'task': 'bot.tasks.run_check',  # путь к задаче
         'schedule': timedelta(hours=1),  # каждый час
     },
+    'delete_pdf': {
+        'task': 'bot.tasks.run_check_and_delete_pdf',
+        'schedule': timedelta(hours=1),
+    },
 }
 
 
