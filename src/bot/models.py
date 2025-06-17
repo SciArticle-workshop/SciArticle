@@ -14,7 +14,7 @@ STATUS = (
 STATE = (
     ('uploaded', 'uploaded'),
     ('validated', 'validated'),
-    ('deletated', 'deleted'),
+    ('deleted', 'deleted'),
 )
 
 TYPE = (
