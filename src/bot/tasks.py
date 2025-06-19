@@ -101,6 +101,36 @@ def send_request(request):
         return False
 
 
+async def new_send_request(request):
+    new_request = await Request.objects.filter(
+                    doi=request.doi,
+                    status=('pending')
+                ).order_by('id').afirst()
+    data = {
+            'doi': new_request.doi,
+        }
+    try:
+        # Отправляем запрос на сервер первого бота
+        response = requests.post(
+            f"{SOURCE_SERVER_URL}/api/new_request-pdf/", data=data
+        )
+        logger.info(f"{response} received")
+        if response.status_code == 200:
+            new_request.message_search_id = response.json()['message_id']
+            await new_request.asave()
+            logger.info("Information about not found request")
+            return True
+        else:
+            logger.error(
+                f"Service is not available:{response.status_code}"
+            )
+            return False
+
+    except Exception as e:
+        logger.error(f"En error occurred while sending request: {e}")
+        return False
+
+
 @shared_task
 def run_check():
     # Ищем все запросы, которые уже устарели, но статус еще не сменился
@@ -235,6 +265,33 @@ def send_pdf(pdfupload):
             )
 
 
+async def delete_message_and_file(pdfupload, delete_file):
+    logger.info(
+        f"Удаляем {pdfupload.message_id} в чате {SEARCH_CHAT_ID}"
+    )
+    await bot.delete_messages(
+        chat_id=SEARCH_CHAT_ID,
+        message_ids=[
+            int(pdfupload.message_id),
+            int(pdfupload.reply_to_message_id)
+        ]
+    )
+    if delete_file:
+        file_path = pdfupload.path
+        # Проверяем есть ли файл, если есть - удаляем
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            logger.info(f"File deleted: {file_path}")
+        else:
+            logger.warning(f"File not found: {file_path}")
+
+    pdfupload.state = 'deleted'
+    await pdfupload.asave()
+    logger.info(
+        f"Message deleted: {pdfupload.message_id} (PDF ID: {pdfupload.id})"
+    )
+
+
 async def handle_vote_callback_task(
         callback_query_id: str,
         callback_data: str, voter_id: int,
@@ -332,6 +389,12 @@ async def handle_vote_callback_task(
                     status='pending'
                 ).aupdate(status='completed')
                 logger.info("Update request status on 'completed'")
+            else:
+                # Удаляем сообщение о невалидном pdf, удаляем pdf файл из папки, где хранятся файлы 
+                await delete_message_and_file(pdf, True)
+                # Смотрим в бд все запросы по этому doi, находит 1-й активный запрос и передаем post-запросом его doi в @SciSourceBot
+                await new_send_request(pdf.request)
+
         except Exception as e:
             logger.error(
                 f"Error editing message caption after validation: {e}"
@@ -356,27 +419,8 @@ def run_check_and_delete_pdf():
         ).order_by('id')
     for pdf in files_uploaded:
         try:
-            logger.info(f"Удаляем {pdf.message_id} в чате {SEARCH_CHAT_ID}")
-            async_to_sync(bot.delete_messages(
-                chat_id=SEARCH_CHAT_ID,
-                message_ids=[
-                    int(pdf.message_id),
-                    int(pdf.reply_to_message_id)
-                ]
-            ))
-            if pdf.state == 'uploaded':
-                file_path = pdf.path
-                # Проверяем есть ли файл, если еть - удаляем
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    logger.info(f"File deleted: {file_path}")
-                else:
-                    logger.warning(f"File not found: {file_path}")
-
-            pdf.state = 'deleted'
-            pdf.save()
-            logger.info(
-                f"Message deleted: {pdf.message_id} (PDF ID: {pdf.id})"
+            async_to_sync(
+                delete_message_and_file(pdf, pdf.state == 'uploaded')
             )
         except Exception as e:
             logger.error(
