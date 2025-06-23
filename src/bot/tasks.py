@@ -306,7 +306,7 @@ async def check_pdf_file(file_id, file_name, user_id, message_id, username, doi)
                 count=user.upload_count,
                 count_type='upload'
             )
-            # Сохраняем информацию о блогодарственном сообщении (за загрузку pdf) в бд (пользователь не подписан на бота ScoSourceBot)
+            # Сохраняем информацию о блогодарственном сообщении (за загрузку pdf) в бд (пользователь не подписан на бота SciSourceBot)
             notification = Notification(
                 user=user,
                 chat_id=data['chat_id'],
@@ -565,7 +565,7 @@ def run_check_and_delete_pdf():
 
 @shared_task
 def run_check_and_delete_thank_message():
-    # Ищем все благодарственные сообщения, которые пора удалить из общего чата (прошел 1 час)
+    # Ищем все благодарственные сообщения, которые пора удалить из общего чата и из чата с ботом @SciSourceBot (прошел 1 час)
     now = timezone.now()
     notifications_expired = Notification.objects.filter(
         delete_at__lt=now,
@@ -581,9 +581,21 @@ def run_check_and_delete_thank_message():
                 logger.info(
                     f"Thank message deleted: {notification.chat_message_id}"
                 )
-
+                # Вызываем функцию, которая проверяет зашел ли пользователь в бота
+                new_result = check_is_user(notification.user)
+                # Если пользователь за 1 час так и не зашел в бота @SciSourceBot за наградой
+                if not new_result:
+                    count_type = notification.type
+                    if count_type == 'upload':
+                        # Обнуляем в бд его счетчик загрузок
+                        notification.user.upload_count = 0
+                    else:
+                        # Обнуляем в бд его счетчик проверок
+                        notification.user.validation_count = 0
+                    notification.user.save()
             else:
                 send_thank_message(notification)
+            # Удаляем из бд благодарственное сообщение
             notification.delete()
         except Exception as e:
             logger.error(
