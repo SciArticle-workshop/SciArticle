@@ -13,11 +13,15 @@ from telegram import (
     InlineKeyboardMarkup
 )
 
-from bot.models import ChatUser, PDFUpload, Request, Validation
-from sciarticle.settings import SOURCE_SERVER_URL
-from sciarticle.settings import SEARCH_CHAT_ID
+from bot.models import ChatUser, PDFUpload, Request, Validation, Notification
+from sciarticle.settings import (
+    SOURCE_SERVER_URL,
+    SEARCH_CHAT_ID,
+    BOT_NAME_SCISOURCE
+)
 
-from .utils import async_download_pdf
+from .utils import async_download_pdf, form_word
+
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +111,7 @@ async def new_send_request(request):
                     status=('pending')
                 ).order_by('id').afirst()
     data = {
-            'doi': new_request.doi,
+            'doi': new_request.doi
         }
     try:
         # Отправляем запрос на сервер первого бота
@@ -151,7 +155,53 @@ def run_check():
     return True
 
 
-async def check_pdf_file(file_id, file_name, user_id, message_id, doi):
+def check_is_user(user):
+    try:
+        # Отправляем запрос на сервер первого бота
+        response = requests.get(
+            f"{SOURCE_SERVER_URL}/api/tg_user/{user.telegram_id}"
+        )
+        logger.info(f"{response} received")
+        if response.status_code == 200:
+            logger.info("User found")
+            return True
+        else:
+            logger.info("User not found")
+            return False
+
+    except Exception as e:
+        logger.error(f"En error occurred while sending request: {e}")
+        return False
+
+
+def send_count(user, count, count_type):
+    # Отправляет информацию про загрузки и валидацию пользоватей, которые подписаны на SciSourceBot(состоят в канале)
+    data = {
+        'count': count,
+        'chat_id': user.telegram_id,
+        'count_type': count_type
+    }
+    try:
+        # Отправляем запрос на сервер первого бота
+        response = requests.post(
+            f"{SOURCE_SERVER_URL}/api/user_counters/", data=data
+        )
+        logger.info(f"{response} received")
+        if response.status_code == 200:
+            logger.info("Information about the upload_count/validation_count of user sent successfully")
+            return response.json()
+        else:
+            logger.error(
+                f"Service is not available:{response.status_code}"
+            )
+            return None
+
+    except Exception as e:
+        logger.error(f"En error occurred while sending request: {e}")
+        return None
+
+
+async def check_pdf_file(file_id, file_name, user_id, message_id, username, doi):
     """
     Проверяет есть ли запрос на эту статью по DOI.
     Сохраняет файл.
@@ -197,7 +247,7 @@ async def check_pdf_file(file_id, file_name, user_id, message_id, doi):
         # Записываем в бд информацию о файле
         user, _ = await ChatUser.objects.aget_or_create(
             telegram_id=user_id,
-            defaults={'username': f"user_{user_id}", 'is_in_bot': True}
+            defaults={'username': username, 'is_in_bot': True}
         )
 
         pdf_upload = await PDFUpload.objects.acreate(
@@ -216,7 +266,7 @@ async def check_pdf_file(file_id, file_name, user_id, message_id, doi):
         # Если есть запрос на статью с таким DOI отправляется сообщение с кнопками в ответ на PDF
         message = await bot.send_message(
             chat_id=SEARCH_CHAT_ID,
-            text="Пожалуйста, проверьте PDF",
+            text=f"Пожалуйста, проверьте PDF. Запрос: https://doi.org/{request.doi}",
             reply_to_message_id=message_id,
             reply_markup=InlineKeyboardMarkup([
                 [
@@ -234,6 +284,36 @@ async def check_pdf_file(file_id, file_name, user_id, message_id, doi):
         pdf_upload.reply_to_message_id = message.id
         await pdf_upload.asave()
         logger.info(f"Verification message sent for article, DOI: {doi}")
+        result = check_is_user(user)
+        N = user.upload_count
+        if not result:
+            # Отправляем благодарственное сообщение в общий чат для пользователя, которые не подписан на бота SciSourceBot(не состоит в канале)
+            thank_message = await bot.send_message(
+                chat_id=SEARCH_CHAT_ID,
+                text=f"@{user.username}, Вы помогли {N} {form_word(N)} (всего), поделившись исследованием! Зайдите в {BOT_NAME_SCISOURCE} для того, чтобы получить награду."
+            )
+            # Сохраняем информацию о блогодарственном сообщении (за загрузку pdf) в бд
+            notification = Notification(
+                user=user,
+                chat_id=SEARCH_CHAT_ID,
+                chat_message_id=thank_message.message_id,
+                type='upload',
+            )
+            await notification.asave()
+        else:
+            data = send_count(
+                user,
+                count=user.upload_count,
+                count_type='upload'
+            )
+            # Сохраняем информацию о блогодарственном сообщении (за загрузку pdf) в бд (пользователь не подписан на бота ScoSourceBot)
+            notification = Notification(
+                user=user,
+                chat_id=data['chat_id'],
+                chat_message_id=data['message_id'],
+                type='upload',
+            )
+            await notification.asave()
     except Exception as e:
         logger.error(
             f"Error processing PDF with file_name={file_name}, DOI={doi}: {e}"
@@ -295,7 +375,7 @@ async def delete_message_and_file(pdfupload, delete_file):
 async def handle_vote_callback_task(
         callback_query_id: str,
         callback_data: str, voter_id: int,
-        voter_username: str):
+        username: str):
     action, pdf_id_str = callback_data.split(":")
     pdf_id = int(pdf_id_str)
     logger.info(f'vote_callback received: action={action}, pdf_id={pdf_id}')
@@ -334,7 +414,7 @@ async def handle_vote_callback_task(
 
     voter, _ = await ChatUser.objects.aget_or_create(
         telegram_id=voter_id,
-        defaults={'username': voter_username}
+        defaults={'username': username}
     )
     vote_val = (action == "vote_valid")
 
@@ -345,6 +425,36 @@ async def handle_vote_callback_task(
             vote=vote_val,
             voted_at=timezone.now()
         )
+        result = check_is_user(voter)
+        N = voter.validation_count
+        if not result:
+            # Отправляем благодарственное сообщение в общий чат за проверку pdf
+            thank_message = await bot.send_message(
+                chat_id=SEARCH_CHAT_ID,
+                text=f"@{voter.username}, Вы помогли {N} {form_word(N)} (всего), проверив исследование! Зайдите в {BOT_NAME_SCISOURCE} для того, чтобы получить награду."
+            )
+            # Записываем информацию в бд (пользователь, которые не подписан на бота SciSourceBot (нет в канале))
+            notification = Notification(
+                user=voter,
+                chat_id=SEARCH_CHAT_ID,
+                chat_message_id=thank_message.message_id,
+                type='validation',
+            )
+            await notification.asave()
+        else:
+            data = send_count(
+                voter,
+                count=voter.validation_count,
+                count_type='validation'
+            )
+            # Сохраняем информацию о благодарственном сообщении в бд
+            notification = Notification(
+                user=voter,
+                chat_id=data['chat_id'],
+                chat_message_id=data['message_id'],
+                type='validation',
+            )
+            await notification.asave()
     except IntegrityError as e:
         logger.error(f"Error: {e}")
         await bot.answer_callback_query(
@@ -390,7 +500,7 @@ async def handle_vote_callback_task(
                 ).aupdate(status='completed')
                 logger.info("Update request status on 'completed'")
             else:
-                # Удаляем сообщение о невалидном pdf, удаляем pdf файл из папки, где хранятся файлы 
+                # Удаляем сообщение о невалидном pdf, удаляем pdf файл из папки, где хранятся файлы
                 await delete_message_and_file(pdf, True)
                 # Смотрим в бд все запросы по этому doi, находит 1-й активный запрос и передаем post-запросом его doi в @SciSourceBot
                 await new_send_request(pdf.request)
@@ -403,6 +513,31 @@ async def handle_vote_callback_task(
         callback_query_id=callback_query_id, text="Спасибо, ваш голос учтен!"
     )
     return pdf.id
+
+
+def send_thank_message(notification):
+    data = {
+        'message_id': notification.chat_message_id,
+        'chat_id': notification.chat_id
+    }
+    try:
+        # Отправляем запрос на сервер первого бота
+        response = requests.post(
+            f"{SOURCE_SERVER_URL}/api/thank_message_delete/", data=data
+        )
+        logger.info(f"{response} received")
+        if response.status_code == 204:
+            logger.info("Information about thank message sent successfully")
+            return True
+        else:
+            logger.error(
+                f"Service is not available:{response.status_code}"
+            )
+            return False
+
+    except Exception as e:
+        logger.error(f"En error occurred while sending request: {e}")
+        return False
 
 
 def async_to_sync(awaitable):
@@ -425,4 +560,32 @@ def run_check_and_delete_pdf():
         except Exception as e:
             logger.error(
                 f"Error deleting message {pdf.message_id}: {e}"
+            )
+
+
+@shared_task
+def run_check_and_delete_thank_message():
+    # Ищем все благодарственные сообщения, которые пора удалить из общего чата (прошел 1 час)
+    now = timezone.now()
+    notifications_expired = Notification.objects.filter(
+        delete_at__lt=now,
+    ).select_related('user')
+    for notification in notifications_expired:
+        try:
+            chat_id = notification.chat_id
+            if chat_id == SEARCH_CHAT_ID:
+                async_to_sync(bot.delete_message(
+                    chat_id=SEARCH_CHAT_ID,
+                    message_id=notification.chat_message_id
+                ))
+                logger.info(
+                    f"Thank message deleted: {notification.chat_message_id}"
+                )
+
+            else:
+                send_thank_message(notification)
+            notification.delete()
+        except Exception as e:
+            logger.error(
+                f"Failed to delete thank message {notification.chat_message_id}: {e}"
             )

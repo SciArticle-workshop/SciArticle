@@ -32,6 +32,7 @@ async def pdf_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file_name = document.file_name
     user_id = update.message.from_user.id
     message_id = update.message.message_id
+    username = update.message.from_user.username
 
     # Получаем DOI из имени файла (уже приведенный к правельному формату)
     doi = get_doi_from_filename(file_name)
@@ -55,5 +56,6 @@ async def pdf_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_name=file_name,
         user_id=user_id,
         message_id=message_id,
+        username=username,
         doi=doi
     )
