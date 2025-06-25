@@ -1,9 +1,12 @@
-from dateutil.relativedelta import relativedelta
-from django.conf import settings
-from django.utils import timezone
-from telegram import Bot
+import logging
 
-from bot.models import Config, Subscription
+from django.conf import settings
+
+import requests
+
+from bot.models import Config
+
+logger = logging.getLogger(__name__)
 
 
 def check_and_award_subscription(chat_user):
@@ -18,40 +21,41 @@ def check_and_award_subscription(chat_user):
 
     z = config.uploads_for_subscription
     if z and chat_user.upload_count and chat_user.upload_count % z == 0:
-        award_subscription(chat_user, reason='uploads')
+        award_subscription(chat_user, reason="uploads")
         awarded = True
 
     h = config.validations_for_subscription
-    if h and chat_user.validation_count and chat_user.validation_count % h == 0:
-        award_subscription(chat_user, reason='validations')
+    if (
+        h
+        and chat_user.validation_count
+        and chat_user.validation_count % h == 0
+    ):
+        award_subscription(chat_user, reason="validations")
         awarded = True
 
     return awarded
 
 
 def award_subscription(chat_user, reason):
-    """Создаёт запись Subscription и уведомляет пользователя через Telegram.
     """
-    last = Subscription.objects.filter(user=chat_user).order_by('-end_date').first()
-    start_date = timezone.now()
-    if last and last.end_date > start_date:
-        start_date = last.end_date
-
-    end_date = start_date + relativedelta(months=1)
-
-    sub = Subscription.objects.create(
-        user=chat_user,
-        start_date=start_date,
-        end_date=end_date,
-        reason=reason
-    )
-
-    bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
-    if chat_user.has_bot:
-        bot.send_message(
-            chat_id=chat_user.user_id,
-            text=(f"🎉 Поздравляем! Вам выдана подписка до {end_date.date()}"
-                  f" за {reason}.")
+    Отправляет запрос на выдачу подписки в основной бот SciSourceBot.
+    """
+    # Проверяем, что URL сервера scisource настроен
+    if not settings.SCISOURCE_SERVER_URL:
+        logger.error("SCISOURCE_SERVER_URL is not configured in settings.")
+        return
+    # Формируем URL для API запроса
+    api_url = f"{settings.SCISOURCE_SERVER_URL}/api/grant-subscription/"
+    payload = {"telegram_id": chat_user.telegram_id, "reason": reason}
+    # Отправляем POST запрос в scisource для выдачи подписки
+    try:
+        response = requests.post(api_url, json=payload, timeout=10)
+        response.raise_for_status()
+        logger.info(
+            f"Successfully requested subscription for user {chat_user.telegram_id} via API. Status: {response.status_code}"
         )
-    # TODO: при необходимости уведомить основной бот SciSourceBot через API
-    return sub
+
+    except requests.exceptions.RequestException as e:
+        logger.error(
+            f"Failed to request subscription for user {chat_user.telegram_id}. Error: {e}"
+        )
