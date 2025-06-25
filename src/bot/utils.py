@@ -22,5 +22,4 @@ def form_word(N):
         return 'раз'
     if 2 <= N % 10 <= 4:
         return 'раза'
-    else:
-        return 'раз'
+    return 'раз'
