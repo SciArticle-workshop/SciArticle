@@ -23,3 +23,12 @@ class RequestSerializer(serializers.Serializer):
 
 class RequestUpdateSerializer(serializers.Serializer):
     message_search_id = serializers.IntegerField()
+
+
+class ValidateBrokenPDFSerializer(serializers.Serializer):
+    file = serializers.FileField()
+    message_id = serializers.IntegerField()
+    chat_id = serializers.IntegerField()
+    doi = serializers.CharField(max_length=255)
+    username = serializers.CharField(max_length=255)
+    bot_id = serializers.IntegerField()

@@ -26,25 +26,15 @@ class ChatUser(AbstractUser):
     """Пользователь."""
 
     telegram_id = models.BigIntegerField(
-        unique=True, null=True, blank=True, verbose_name="Telegram ID"
+        unique=True, null=True, blank=True, verbose_name='Telegram ID'
     )
     username = models.CharField(
-        max_length=25, unique=True, null=True, verbose_name="Имя пользователя"
+        max_length=25, unique=True, null=True, verbose_name='Имя пользователя'
     )
     join_date = models.DateTimeField(
-        auto_now_add=True, verbose_name="Дата присоединения"
+        auto_now_add=True, verbose_name='Дата присоединения'
     )
-    is_in_bot = models.BooleanField(
-        default=False,
-        help_text="Взаимодействовал ли пользователь с ботом",
-        verbose_name="Пользователь в боте",
-    )
-    upload_count = models.BigIntegerField(
-        default=0, verbose_name="Количество загрузок"
-    )
-    validation_count = models.BigIntegerField(
-        default=0, verbose_name="Количество валидаций"
-    )
+    is_bot = models.BooleanField(default=False, verbose_name='Является ботом')
 
     class Meta:
         verbose_name = "пользователь"

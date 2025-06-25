@@ -10,7 +10,7 @@ def on_pdfupload_created(sender, instance, created, **kwargs):
     """Сигнал: при создании PDFUpload инкрементим счетчик загрузок
     и проверяем достижение порога подписки.
     """
-    if not created or instance.user is None:
+    if not created or instance.user is None:  # Чтобы не считатать загрузки от бота - условие (or instance.user.is_bot)
         return
 
     user = instance.user

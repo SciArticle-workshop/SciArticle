@@ -39,10 +39,10 @@ DOI_REGEX = r"10\.\d{4,9}[\s][-._;()\s:A-Za-z0-9]+"
 
 
 @shared_task
-def request_pdf_task(chat_id, message_id, doi, message_search_id):
+def request_pdf_task(chat_id, message_id, doi, username, message_search_id):
     chat_user, _ = ChatUser.objects.get_or_create(
         telegram_id=chat_id,
-        defaults={'username': f"user_{chat_id}", 'is_in_bot': True}
+        defaults={'username': username, 'is_in_bot': True}
     )
 
     # Проверка на наличие в базе даных запроса по DOI у пользователя
@@ -54,7 +54,7 @@ def request_pdf_task(chat_id, message_id, doi, message_search_id):
         logger.info(
             f"Repeated request from user in chat_id={chat_id}: don't save to db"
         )
-        return
+        return None, None
 
     is_duplicate = Request.objects.filter(
         doi=doi,
@@ -73,10 +73,10 @@ def request_pdf_task(chat_id, message_id, doi, message_search_id):
 
     # Проверка на наличие в базе данных запроса по DOI от разных пользователей и запись в бд при наличии
     if is_duplicate:
-        return {'code': 'repeated request', 'id': request_obj.id}
+        return {'code': 'repeated request', 'id': request_obj.id}, request_obj
 
     # Если статьи нет в базе данных
-    return {'code': 'new request', 'id': request_obj.id}
+    return {'code': 'new request', 'id': request_obj.id}, request_obj
 
 
 def send_request(request):
@@ -146,7 +146,7 @@ def run_check():
         f"Update request status {expired_requests} on 'expired'"
     )
     for request in expired_requests:
-        is_ok = send_request(request)
+        is_ok = request.message_search_id == 0 or send_request(request)
         if is_ok:
             Request.objects.filter(
                 doi=request.doi,
@@ -300,13 +300,13 @@ async def check_pdf_file(file_id, file_name, user_id, message_id, username, doi)
                 type='upload',
             )
             await notification.asave()
-        else:
+        elif not user.is_bot:
             data = send_count(
                 user,
                 count=user.upload_count,
                 count_type='upload'
             )
-            # Сохраняем информацию о блогодарственном сообщении (за загрузку pdf) в бд (пользователь не подписан на бота SciSourceBot)
+            # Сохраняем информацию о блогодарственном сообщении (за загрузку pdf) в бд (пользователь подписан на бота SciSourceBot)
             notification = Notification(
                 user=user,
                 chat_id=data['chat_id'],
@@ -447,7 +447,7 @@ async def handle_vote_callback_task(
                 count=voter.validation_count,
                 count_type='validation'
             )
-            # Сохраняем информацию о благодарственном сообщении в бд
+            # Сохраняем информацию о благодарственном сообщении в бд (пользователь состоит в канале)
             notification = Notification(
                 user=voter,
                 chat_id=data['chat_id'],
@@ -601,3 +601,64 @@ def run_check_and_delete_thank_message():
             logger.error(
                 f"Failed to delete thank message {notification.chat_message_id}: {e}"
             )
+
+
+async def validate_broken_pdf(file, doi, request, bot_id):
+    """Отправляет pdf-файл в общий чат от лица бота."""
+    bot = Bot(token=TELEGRAM_TOKEN)
+    try:
+        filename = file.name
+        save_path = os.path.join(PDF_FILE, file.name)
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        with open(save_path, 'wb+') as destination:
+            for chunk in file.chunks():
+                destination.write(chunk)
+            logger.info(f"File saved: {filename}")
+
+    except Exception as e:
+        logger.error(f"Error saving file: {e}")
+
+    with open(save_path, 'rb') as f:
+        pdf_message = await bot.send_document(
+            chat_id=SEARCH_CHAT_ID,
+            document=f,
+            filename=file.name)
+
+    # Записываем в бд информацию о загруженном pdf
+    user, _ = await ChatUser.objects.aget_or_create(
+        telegram_id=bot_id,
+        defaults={'username': BOT_NAME_SCISOURCE, 'is_in_bot': True},
+        is_bot=True
+    )
+
+    pdf_upload = await PDFUpload.objects.acreate(
+        file_id='',
+        request=request,
+        user=user,
+        message_id=pdf_message.message_id,
+        state='uploaded',
+        path=save_path
+    )
+    logger.info(f"PDF information is recorded in the db {pdf_upload}")
+
+    # Отправляем сообщение, которое прикрепляется к файлу, текст и кнопки для проверки файла
+    message = await bot.send_message(
+        chat_id=SEARCH_CHAT_ID,
+        text=f"Пожалуйста, проверьте PDF. Запрос: https://doi.org/{request.doi}",
+        reply_to_message_id=pdf_message.message_id,
+        reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "✅ Всё верно",
+                        callback_data=f"vote_valid:{pdf_upload.id}"
+                    ),
+                    InlineKeyboardButton(
+                        "❌ PDF неверный",
+                        callback_data=f"vote_invalid:{pdf_upload.id}"
+                    )
+                ]
+            ])
+        )
+    pdf_upload.reply_to_message_id = message.message_id
+    await pdf_upload.asave()
+    logger.info(f"Verification message sent for article, DOI: {doi}")
