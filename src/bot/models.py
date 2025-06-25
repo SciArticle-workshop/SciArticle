@@ -155,14 +155,19 @@ class Validation(models.Model):
 class Notification(models.Model):
     """Уведомление."""
 
-    user = models.ForeignKey(ChatUser, on_delete=models.CASCADE, related_name='notifications')
+    user = models.ForeignKey(
+        ChatUser,
+        on_delete=models.CASCADE,
+        related_name='notifications'
+    )
     type = models.CharField(
         max_length=25,
         choices=TYPE,
     )
-    chat_message_id = models.BigIntegerField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    delete_at = models.DateTimeField()
+    chat_id = models.BigIntegerField(default=0)
+    chat_message_id = models.BigIntegerField(default=0)
+    created_at = models.DateTimeField(default=timezone.now)
+    delete_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'уведомление'
@@ -170,6 +175,7 @@ class Notification(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.pk:
+            self.created_at = timezone.now()
             self.delete_at = self.created_at + timedelta(hours=1)
         super().save(*args, **kwargs)
 
@@ -180,7 +186,11 @@ class Notification(models.Model):
 class Subscription(models.Model):
     """Подписка."""
 
-    user = models.ForeignKey(ChatUser, on_delete=models.CASCADE, related_name='subscriptions')
+    user = models.ForeignKey(
+        ChatUser,
+        on_delete=models.CASCADE,
+        related_name='subscriptions'
+    )
     start_date = models.DateTimeField(auto_now_add=True)
     end_date = models.DateTimeField()
     reason = models.CharField(

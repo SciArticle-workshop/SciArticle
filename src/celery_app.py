@@ -20,7 +20,11 @@ app.conf.beat_schedule = {
     },
     'delete_pdf': {
         'task': 'bot.tasks.run_check_and_delete_pdf',
-        'schedule': timedelta(hours=1),
+        'schedule': timedelta(hours=1),  # каждый час
+    },
+    'delete_thank_message': {
+        'task': 'bot.tasks.run_check_and_delete_thank_message',
+        'schedule': timedelta(minutes=20),  # каждые 20 минут
     },
 }
 
