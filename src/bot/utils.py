@@ -17,12 +17,10 @@ async def async_download_pdf(bot: Bot, file_id: str, file_path: str):
 
 
 def form_word(N):
-    # Для 0 < N <= 100
-    if 2 <= N <= 4:
-        return 'раза'
-    elif 11 <= N <= 14:
+    # Для 0 <=0 N < inf
+    if 11 <= N % 100 <= 14:
         return 'раз'
-    elif N >= 22 and 2 <= N % 10 <= 4:
+    if 2 <= N % 10 <= 4:
         return 'раза'
     else:
         return 'раз'
