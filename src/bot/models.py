@@ -283,9 +283,8 @@ class Config(models.Model):
             raise ValidationError("Можно создать только одну конфигурацию.")
 
     def save(self, *args, **kwargs):
-        """Override save method to ensure only one instance of Config can exist."""
-        if not self.pk and Config.objects.exists():
-            raise Exception("Можно создать только одну конфигурацию.")
+        """Override save method to ensure validation is performed before saving."""
+        self.full_clean()  # Perform validation
         super().save(*args, **kwargs)
 
     @classmethod
