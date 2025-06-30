@@ -128,7 +128,7 @@ class PDFUpload(models.Model):
     )
     file_id = models.CharField(default="", verbose_name="ID файла")
     state = models.CharField(
-        max_length=25, choices=STATE, default="", verbose_name="Состояние"
+        max_length=25, choices=STATE, default="uploaded", verbose_name="Состояние"
     )
 
     class Meta:
