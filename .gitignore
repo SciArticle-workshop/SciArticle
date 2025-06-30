@@ -181,4 +181,5 @@ staticfiles
 
 .DS_Store
 
-pdf_files
+pdf_files/
+.idea

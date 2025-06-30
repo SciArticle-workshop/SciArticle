@@ -1,7 +1,7 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from bot.models import PDFUpload, Validation
+from bot.models import PDFUpload, Validation, Request, Count
 from bot.services import check_and_award_subscription
 
 
@@ -10,14 +10,19 @@ def on_pdfupload_created(sender, instance, created, **kwargs):
     """Сигнал: при создании PDFUpload инкрементим счетчик загрузок
     и проверяем достижение порога подписки.
     """
-    if not created or instance.user is None:  # Чтобы не считатать загрузки от бота - условие (or instance.user.is_bot)
+
+    # Чтобы не считатать загрузки от бота - условие (or instance.user.is_bot)
+    if not created or instance.user is None:
         return
 
     user = instance.user
-    user.upload_count = (user.upload_count or 0) + 1
-    user.save(update_fields=['upload_count'])
+    count, _ = Count.objects.get_or_create(user=user)
 
-    check_and_award_subscription(user)
+    count.upload_count = (count.upload_count or 0) + 1
+    count.total_upload_count = (count.total_upload_count or 0) + 1
+    count.save()
+
+    check_and_award_subscription(user, count)
 
 
 @receiver(post_save, sender=Validation)
@@ -29,7 +34,37 @@ def on_validation_created(sender, instance, created, **kwargs):
         return
 
     user = instance.user
-    user.validation_count = (user.validation_count or 0) + 1
-    user.save(update_fields=['validation_count'])
+    count, _ = Count.objects.get_or_create(user=user)
 
-    check_and_award_subscription(user)
+    count.validation_count = (count.validation_count or 0) + 1
+    count.total_validation_count = (count.total_validation_count or 0) + 1
+    count.save()
+
+    check_and_award_subscription(user, count)
+
+
+@receiver(post_save, sender=Request)
+def on_request_created(sender, instance, created, **kwargs):
+    """Сигнал: при создании Request инкрементим счетчик загрузок."""
+    if not created or instance.user is None:
+        return
+
+    user = instance.user
+    count, _ = Count.objects.get_or_create(user=user)
+
+    count.request_count = (count.request_count or 0) + 1
+    count.save()
+
+
+@receiver(post_save, sender=PDFUpload)
+def on_deleted_created(sender, instance, created, **kwargs):
+    """Сигнал: при удалении PDF инкрементим счетчик удаленных pdf."""
+
+    if not created or instance.user is None:
+        return
+
+    user = instance.user
+    count, _ = Count.objects.get_or_create(user=user)
+
+    count.deleted_pdf_count = (count.deleted_pdf_count or 0) + 1
+    count.save()

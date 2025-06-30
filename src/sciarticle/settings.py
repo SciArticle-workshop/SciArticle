@@ -1,4 +1,6 @@
 import os
+import re
+
 from pathlib import Path
 
 from django.core.management.utils import get_random_secret_key
@@ -95,6 +97,8 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+PDF_FILES = './pdf_files'
+os.makedirs(PDF_FILES, exist_ok=True)
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -118,3 +122,6 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
 CELERY_TASK_SOFT_TIME_LIMIT = 15 * 60
 CELERY_WORKER_HIJACK_ROOT_LOGGER = False
+
+DOI_REGEX = re.compile(r'^10\.\d{4,9}/[-._;()/:A-Za-z0-9]+$')
+DOI_REGEX_WITH_SPACE = r"10\.\d{4,9}[\s][-._;()\s:A-Za-z0-9]+"

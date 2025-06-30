@@ -18,7 +18,8 @@ dependencies = [
     "dotenv (>=0.9.9,<0.10.0)",
     "poetry-core (>=2.0.0,<3.0.0)",
     "pytest (>=8.3.5,<9.0.0)",
-    "djangorestframework (>=3.16.0,<4.0.0)"]
+    "djangorestframework (>=3.16.0,<4.0.0)",
+    "python-dateutil (>=2.9.0.post0,<3.0.0)"]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

@@ -1,10 +1,15 @@
 FROM python:3.12
 
+RUN pip install poetry
+
+# Установка флага, чтобы poetry не создавал venv
+RUN poetry config virtualenvs.create false
+
 WORKDIR /app
 
 COPY pyproject.toml poetry.lock ./
 
-RUN pip install poetry && poetry install --no-root
+RUN poetry install --no-root
 
 COPY ./src /app/src
 

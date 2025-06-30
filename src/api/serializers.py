@@ -1,9 +1,6 @@
-import re
-
 from rest_framework import serializers
 
-
-DOI_REGEX = re.compile(r'^10\.\d{4,9}/[-._;()/:A-Za-z0-9]+$')
+from sciarticle.settings import DOI_REGEX
 
 
 class RequestSerializer(serializers.Serializer):
@@ -16,6 +13,7 @@ class RequestSerializer(serializers.Serializer):
         """
         Проверяет формат DOI.
         """
+
         if not DOI_REGEX.match(value):
             raise serializers.ValidationError("Invalid format DOI")
         return value
