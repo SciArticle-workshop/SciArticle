@@ -14,6 +14,7 @@ from .serializers import (
     RequestUpdateSerializer,
     ValidateBrokenPDFSerializer,
 )
+from .permissions import HasValidAPIToken
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ validate_broken_pdf_sync = async_to_sync(validate_broken_pdf)
 
 class RequestAPIView(APIView):
     """Получение Post-запроса для request_pdf."""
+    permission_classes = [HasValidAPIToken]
 
     def post(self, request):
         serializer = RequestSerializer(data=request.data)
@@ -74,6 +76,7 @@ class ValidateBrokenPDFView(APIView):
     Создание запроса в бд.
     Отправка файла в общий чат для дополнительной проверки.
     """
+    permission_classes = [HasValidAPIToken]
 
     def post(self, request):
         serializer = ValidateBrokenPDFSerializer(data=request.data)

@@ -112,11 +112,9 @@ def run_check_and_delete_thank_message():
         try:
             chat_id = notification.chat_id
             if chat_id == SEARCH_CHAT_ID:
-                async_to_sync(
-                    bot.delete_message(
-                        chat_id=SEARCH_CHAT_ID,
-                        message_id=notification.chat_message_id,
-                    )
+                async_to_sync(bot.delete_message)(
+                    chat_id=SEARCH_CHAT_ID,
+                    message_id=notification.chat_message_id,
                 )
                 logger.info(
                     f'Thank message deleted: {notification.chat_message_id}'

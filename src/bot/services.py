@@ -212,7 +212,6 @@ async def handle_vote_callback_task(
         await Validation.objects.acreate(
             pdf_upload=pdf, user=voter, vote=vote_val, voted_at=timezone.now()
         )
-        await send_thank_message(voter, action='validation')
     except IntegrityError as e:
         logger.error(f'Error: {e}')
         await bot.answer_callback_query(
@@ -221,6 +220,11 @@ async def handle_vote_callback_task(
             show_alert=True,
         )
         return
+
+    try:
+        await send_thank_message(voter, action='validation')
+    except Exception as e:
+        logger.error(f'Problem with send_thanks_message: {e}')
 
     votes = Validation.objects.filter(pdf_upload=pdf)
     votes_true = await votes.filter(vote=True).acount()
@@ -326,6 +330,9 @@ def check_and_award_subscription(chat_user, count):
     if not config:
         return False
 
+    if chat_user.is_bot:
+        return False
+
     awarded = False
 
     # количество загрузок - для подписки
@@ -339,10 +346,11 @@ def check_and_award_subscription(chat_user, count):
         # оставшееся количество загрузое пользователя
         upl_c_remain = count.upload_count % z
         new_data = award_subscription(chat_user, 'uploads', count_sub_upl)
-        count.upload_count = upl_c_remain
-        count.subscriptions_for_upload += count_sub_upl
-        count.save()
-        awarded = True
+        if new_data:
+            count.upload_count = upl_c_remain
+            count.subscriptions_for_upload += count_sub_upl
+            count.save()
+            awarded = True
 
     if h != 0 and count.validation_count >= h:
         # Количество подписок пользователя (в количестве месяцев: 1, 2 и т.д.)
@@ -350,10 +358,11 @@ def check_and_award_subscription(chat_user, count):
         # оставшееся количество проверок пользователя
         val_c_remain = count.validation_count % h
         new_data = award_subscription(chat_user, 'validations', count_sub_val)
-        count.validation_count = val_c_remain
-        count.subscriptions_for_validation += count_sub_val
-        count.save()
-        awarded = True
+        if new_data:
+            count.validation_count = val_c_remain
+            count.subscriptions_for_validation += count_sub_val
+            count.save()
+            awarded = True
 
     if awarded:
         Subscription.objects.update_or_create(
@@ -443,12 +452,13 @@ async def send_thank_message(user, action):
         data = send_count(
             user, count=count, count_type=action, limit=limit  # для подписки
         )
-        # Сохраняем информацию о благодарственном сообщении в бд.
-        # Пользователь состоит в канале
-        notification = Notification(
-            user=user,
-            chat_id=data['chat_id'],
-            chat_message_id=data['message_id'],
-            type=action,
-        )
-        await notification.asave()
+        if data['message_id'] > 0:
+            # Сохраняем информацию о благодарственном сообщении в бд.
+            # Пользователь состоит в канале
+            notification = Notification(
+                user=user,
+                chat_id=data['chat_id'],
+                chat_message_id=data['message_id'],
+                type=action,
+            )
+            await notification.asave()

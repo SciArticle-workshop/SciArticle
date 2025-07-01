@@ -1,9 +1,13 @@
 import logging
 import requests
 
-from sciarticle.settings import SOURCE_SERVER_URL
+from sciarticle.settings import API_SECRET_TOKEN, SOURCE_SERVER_URL
 
 logger = logging.getLogger(__name__)
+
+headers = {
+    'X-API-Token': API_SECRET_TOKEN
+}
 
 
 def send_request(request):
@@ -16,7 +20,9 @@ def send_request(request):
     try:
         # Отправляем запрос на сервер первого бота
         response = requests.post(
-            f'{SOURCE_SERVER_URL}/api/request-pdf-expired/', data=data
+            f'{SOURCE_SERVER_URL}/api/request-pdf-expired/',
+            data=data,
+            headers=headers
         )
         logger.info(f'{response} received')
         if response.status_code == 204:
@@ -40,7 +46,9 @@ def renew_request(new_request):
     try:
         # Отправляем запрос на сервер первого бота
         response = requests.post(
-            f'{SOURCE_SERVER_URL}/api/new_request-pdf/', data=data
+            f'{SOURCE_SERVER_URL}/api/new_request-pdf/',
+            data=data,
+            headers=headers
         )
         logger.info(f'{response} received')
         if response.status_code == 200:
@@ -63,7 +71,8 @@ def check_is_user(user):
     try:
         # Отправляем запрос на сервер первого бота
         response = requests.get(
-            f'{SOURCE_SERVER_URL}/api/tg_user/{user.telegram_id}'
+            f'{SOURCE_SERVER_URL}/api/tg_user/{user.telegram_id}',
+            headers=headers
         )
         logger.info(f'{response} received')
         if response.status_code == 200:
@@ -92,7 +101,9 @@ def send_count(user, count, count_type, limit):
     try:
         # Отправляем запрос на сервер первого бота
         response = requests.post(
-            f'{SOURCE_SERVER_URL}/api/user_counters/', data=data
+            f'{SOURCE_SERVER_URL}/api/user_counters/',
+            data=data,
+            headers=headers
         )
         logger.info(f'{response} received')
         if response.status_code == 200:
@@ -121,7 +132,10 @@ def send_pdf(pdfupload):
         files = {'file': ('document.pdf', f, 'application/pdf')}
 
         response = requests.post(
-            f'{SOURCE_SERVER_URL}/api/upload-pdf/', data=data, files=files
+            f'{SOURCE_SERVER_URL}/api/upload-pdf/',
+            data=data,
+            files=files,
+            headers=headers
         )
         if response.status_code == 200:
             logger.info('File and data sent successfully')
@@ -141,7 +155,9 @@ def send_thank_message(notification):
     try:
         # Отправляем запрос на сервер первого бота
         response = requests.post(
-            f'{SOURCE_SERVER_URL}/api/thank_message_delete/', data=data
+            f'{SOURCE_SERVER_URL}/api/thank_message_delete/',
+            data=data,
+            headers=headers
         )
         logger.info(f'{response} received')
         if response.status_code == 204:
@@ -175,7 +191,7 @@ def award_subscription(chat_user, reason, amount):
     }
     # Отправляем POST запрос в scisource для выдачи подписки
     try:
-        response = requests.post(api_url, json=payload)
+        response = requests.post(api_url, json=payload, headers=headers)
         response.raise_for_status()
         logger.info(
             f'Successfully requested subscription for user {chat_user.telegram_id} via API. Status: {response.status_code}'
