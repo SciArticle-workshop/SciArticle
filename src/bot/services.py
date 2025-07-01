@@ -16,7 +16,7 @@ from bot.models import (
     Subscription,
     Validation,
 )
-from sciarticle.settings import BOT_NAME_SCISOURCE, PDF_FILES, SEARCH_CHAT_ID
+from sciarticle.settings import PDF_FILES, SEARCH_CHAT_ID
 
 from .scisource_client import (
     award_subscription,
@@ -283,7 +283,7 @@ async def handle_vote_callback_task(
     return pdf.id
 
 
-async def validate_broken_pdf(file, doi, request, bot_id):
+async def validate_broken_pdf(file, doi, request, bot_id, bot_name):
     """Отправляет pdf-файл в общий чат от лица бота."""
     bot = get_bot()
     try:
@@ -305,7 +305,7 @@ async def validate_broken_pdf(file, doi, request, bot_id):
     # Записываем в бд информацию о загруженном pdf
     user, _ = await ChatUser.objects.aget_or_create(
         telegram_id=bot_id,
-        defaults={'username': BOT_NAME_SCISOURCE},
+        defaults={'username': bot_name},
         is_bot=True,
     )
 

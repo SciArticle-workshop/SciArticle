@@ -28,12 +28,23 @@ class ConfigAdmin(admin.ModelAdmin):
         'uploads_for_subscription',
         'validations_for_subscription'
     ]
+    fields = [
+        'uploads_for_subscription',
+        'validations_for_subscription'
+    ]
 
     def has_add_permission(self, request):
         return not Config.objects.exists()
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+    def changelist_view(self, request, extra_context=None):
+        """Позволяет редактировать поля."""
+        config = Config.objects.first()
+        if config:
+            return self.change_view(request, str(config.pk))
+        return super().changelist_view(request, extra_context)
 
 
 @admin.register(Request)
@@ -166,6 +177,6 @@ class SubscriptionAdmin(admin.ModelAdmin):
     is_active.short_description = 'Статус'
 
 
-admin.site.site_header = 'Управление научными статьями'
+admin.site.site_header = 'SciArticle'
 admin.site.site_title = 'Административная панель'
 admin.site.index_title = 'Панель управления'

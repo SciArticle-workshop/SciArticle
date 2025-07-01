@@ -91,6 +91,7 @@ class ValidateBrokenPDFView(APIView):
         chat_id = serializer.validated_data['chat_id']
         message_id = serializer.validated_data['message_id']
         bot_id = serializer.validated_data['bot_id']
+        bot_name = serializer.validated_data['bot_name']
 
         logger.info(
             f'Request received: for article doi:{doi} from chat_id:{chat_id}. Broken PDF'
@@ -103,6 +104,6 @@ class ValidateBrokenPDFView(APIView):
         if result['code'] == 'repeated request':
             logger.info(f'Repeat request: {result}')
             return Response(result, status.HTTP_200_OK)
-        validate_broken_pdf_sync(file, doi, pdf_request, bot_id)
+        validate_broken_pdf_sync(file, doi, pdf_request, bot_id, bot_name)
 
         return Response(result, status.HTTP_200_OK)

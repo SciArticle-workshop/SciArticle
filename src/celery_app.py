@@ -16,15 +16,15 @@ app.autodiscover_tasks()
 app.conf.beat_schedule = {
     'run_every_hour': {  # название задачи
         'task': "bot.tasks.run_check",  # путь к задаче
-        'schedule': timedelta(minutes=1),  # каждый час
+        'schedule': timedelta(hours=1),  # каждый час
     },
     'delete_pdf': {
         'task': 'bot.tasks.run_check_and_delete_pdf',
-        'schedule': timedelta(minutes=1),  # каждый час
+        'schedule': timedelta(hours=1),  # каждый час
     },
     'delete_thank_message': {
         'task': 'bot.tasks.run_check_and_delete_thank_message',
-        'schedule': timedelta(minutes=1),  # каждые 20 минут
+        'schedule': timedelta(minutes=20),  # каждые 20 минут
     },
 }
 

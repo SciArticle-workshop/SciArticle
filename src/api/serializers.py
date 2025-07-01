@@ -30,3 +30,4 @@ class ValidateBrokenPDFSerializer(serializers.Serializer):
     doi = serializers.CharField(max_length=255)
     username = serializers.CharField(max_length=255)
     bot_id = serializers.IntegerField()
+    bot_name = serializers.CharField(max_length=255)

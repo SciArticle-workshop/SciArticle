@@ -11,7 +11,7 @@ secret_key = get_random_secret_key()
 
 SECRET_KEY = os.environ.get('SECRET_KEY', secret_key)
 
-DEBUG = 'True'
+DEBUG = os.environ.get('DEBUG', 'True').lower() == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost 127.0.0.1 host.docker.internal').split(' ')
 
@@ -35,6 +35,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware'
 ]
 
 ROOT_URLCONF = 'sciarticle.urls'
@@ -97,6 +98,8 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 PDF_FILES = './pdf_files'
 os.makedirs(PDF_FILES, exist_ok=True)
 
@@ -105,7 +108,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 SOURCE_SERVER_URL = os.environ.get('SOURCE_SERVER_URL')
 SEARCH_CHAT_ID = int(os.environ.get('SEARCH_CHAT_ID'))
-BOT_NAME_SCISOURCE = os.environ.get('BOT_NAME_SCISOURCE')
 API_SECRET_TOKEN = os.environ.get('API_SECRET_TOKEN')
 
 REDIS_HOST = os.environ.get('REDIS_HOST', 'redis')

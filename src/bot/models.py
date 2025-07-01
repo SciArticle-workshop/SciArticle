@@ -7,8 +7,7 @@ from django.utils import timezone
 STATUS = (
     ('pending', 'в ожидании'),
     ('completed', 'завершенный'),
-    ('expired', 'истекший'),
-    ('removed', 'удаленный'),
+    ('expired', 'истекший')
 )
 
 STATE = (
