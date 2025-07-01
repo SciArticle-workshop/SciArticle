@@ -15,7 +15,7 @@ class RequestSerializer(serializers.Serializer):
         """
 
         if not DOI_REGEX.match(value):
-            raise serializers.ValidationError("Invalid format DOI")
+            raise serializers.ValidationError('Invalid format DOI')
         return value
 
 

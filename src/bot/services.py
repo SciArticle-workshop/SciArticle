@@ -5,7 +5,7 @@ from django.db import IntegrityError
 from django.utils import timezone
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot.bot import get_bot
+from bot.utils import get_bot
 from bot.models import (
     ChatUser,
     Config,
@@ -34,6 +34,7 @@ bot = get_bot()
 
 
 async def new_send_request(request):
+    """Ищет в бд существующий запрос с тем же doi и статусом - в ожидании."""
     new_request = (
         await Request.objects.filter(
             doi=request.doi, status=('pending')).order_by('id').afirst()
@@ -68,7 +69,8 @@ async def check_pdf_file(
                 chat_id=SEARCH_CHAT_ID, message_id=message_id
             )
             return
-        # Проверяем есть ли в базе данных уже файл с таким именем и состоянием в проверке
+        # Проверяем есть ли в базе данных уже файл с таким именем и
+        # состоянием в проверке
         pdf_file = await PDFUpload.objects.filter(
             request=request, state='uploaded'
         ).afirst()
@@ -92,7 +94,7 @@ async def check_pdf_file(
         # Записываем в бд информацию о файле
         user, _ = await ChatUser.objects.aget_or_create(
             telegram_id=user_id,
-            defaults={'username': username, 'is_in_bot': True},
+            defaults={'username': username},
         )
 
         pdf_upload = await PDFUpload.objects.acreate(
@@ -105,7 +107,8 @@ async def check_pdf_file(
         )
         logger.info(f'PDF information is recorded in the db {pdf_upload}')
 
-        # Отправляем post-запрос в SciSourceBot (нужно удалить сообщение с запросом на статью)
+        # Отправляем post-запрос в SciSourceBot
+        # (нужно удалить сообщение с запросом на статью)
         send_request(request)
         await send_verification_message(pdf_upload)
 
@@ -117,6 +120,12 @@ async def check_pdf_file(
 
 
 async def delete_message_and_file(pdfupload, delete_file):
+    """
+    В случает если, pdf был признан невалидным.
+    Удаляет сообщение и его reply в общем чате.
+    Удаляет файл из папки, где хранятся файлы.
+    Обновляет статус объекта PDFUpload на 'deleted' и сохраняет.
+    """
     logger.info(f'Удаляем {pdfupload.message_id} в чате {SEARCH_CHAT_ID}')
     try:
         bot = get_bot()
@@ -149,6 +158,15 @@ async def delete_message_and_file(pdfupload, delete_file):
 async def handle_vote_callback_task(
     callback_query_id: str, callback_data: str, voter_id: int, username: str
 ):
+    """
+    Проверяет, может ли пользователю голосовать за  PDF.
+    Сохраняет голос (валиден / не валиден) в модель Validation.
+    Если PDF был признан валиденым, меняет статус запросов на выполненные
+    и отправляет файл и данные другому боту.
+    Если PDF был признан невалидным — вызывает функцию,
+    которая отвечает за удаление.
+    """
+    bot = get_bot()
     action, pdf_id_str = callback_data.split(':')
     pdf_id = int(pdf_id_str)
     logger.info(f'vote_callback received: action={action}, pdf_id={pdf_id}')
@@ -158,11 +176,11 @@ async def handle_vote_callback_task(
         ).aget(id=pdf_id)
     except PDFUpload.DoesNotExist:
         logger.error(
-            f"PDFUpload with id {pdf_id} does not exist. Cannot process vote."
+            f'PDFUpload with id {pdf_id} does not exist. Cannot process vote.'
         )
         await bot.answer_callback_query(
             callback_query_id=callback_query_id,
-            text="Ошибка: PDF не найден.",
+            text='Ошибка: PDF не найден.',
             show_alert=True,
         )
         return
@@ -172,7 +190,7 @@ async def handle_vote_callback_task(
     if req.user and req.user.telegram_id == voter_id:
         await bot.answer_callback_query(
             callback_query_id=callback_query_id,
-            text="Вы не можете голосовать по своему запросу.",
+            text='Вы не можете голосовать по своему запросу.',
             show_alert=True,
         )
         return
@@ -180,15 +198,15 @@ async def handle_vote_callback_task(
     if pdf.user.telegram_id == voter_id:
         await bot.answer_callback_query(
             callback_query_id=callback_query_id,
-            text="Вы не можете голосовать за свой PDF.",
+            text='Вы не можете голосовать за свой PDF.',
             show_alert=True,
         )
         return
 
     voter, _ = await ChatUser.objects.aget_or_create(
-        telegram_id=voter_id, defaults={"username": username}
+        telegram_id=voter_id, defaults={'username': username}
     )
-    vote_val = action == "vote_valid"
+    vote_val = action == 'vote_valid'
 
     try:
         await Validation.objects.acreate(
@@ -196,10 +214,10 @@ async def handle_vote_callback_task(
         )
         await send_thank_message(voter, action='validation')
     except IntegrityError as e:
-        logger.error(f"Error: {e}")
+        logger.error(f'Error: {e}')
         await bot.answer_callback_query(
             callback_query_id=callback_query_id,
-            text="Вы уже голосовали за этот PDF.",
+            text='Вы уже голосовали за этот PDF.',
             show_alert=True,
         )
         return
@@ -207,26 +225,26 @@ async def handle_vote_callback_task(
     votes = Validation.objects.filter(pdf_upload=pdf)
     votes_true = await votes.filter(vote=True).acount()
     votes_false = await votes.filter(vote=False).acount()
-    logger.info(f"votes_true: {votes_true}")
-    logger.info(f"votes_false: {votes_false}")
+    logger.info(f'votes_true: {votes_true}')
+    logger.info(f'votes_false: {votes_false}')
 
     if votes_true >= 2 or votes_false >= 2:
         pdf.is_valid = votes_true >= 2
         pdf.validated_at = timezone.now()
         await pdf.asave()
 
-        final_text = ""
+        final_text = ''
         if pdf.is_valid:
             final_text = (
-                f"✅ PDF был признан валидным. https://doi.org/{req.doi}"
+                f'✅ PDF был признан валидным. https://doi.org/{req.doi}'
             )
         else:
             final_text = (
-                f"❌ PDF был признан невалидным. https://doi.org/{req.doi}"
+                f'❌ PDF был признан невалидным. https://doi.org/{req.doi}'
             )
 
         try:
-            pdf.state = "validated"
+            pdf.state = 'validated'
             await pdf.asave()
             await bot.edit_message_text(
                 chat_id=SEARCH_CHAT_ID,
@@ -240,15 +258,15 @@ async def handle_vote_callback_task(
                 # Ищем все запросы по этой статье. Так как статья найдена и
                 # проверена, то меняем статус запроса на - завершенный
                 await Request.objects.filter(
-                    doi=pdf.request.doi, status="pending"
-                ).aupdate(status="completed")
+                    doi=pdf.request.doi, status='pending'
+                ).aupdate(status='completed')
                 logger.info("Update request status on 'completed'")
             else:
                 # Удаляем сообщение о невалидном pdf,
                 # удаляем pdf файл из папки, где хранятся файлы
                 await delete_message_and_file(pdf, True)
                 # Смотрим в бд все запросы по этому doi,
-                # находит 1-й активный запрос и передаем post-запросом его doi в @SciSourceBot
+                # находит 1-й активный запрос и отправляем запросом его doi
                 await new_send_request(pdf.request)
 
         except Exception as e:
@@ -267,15 +285,15 @@ async def validate_broken_pdf(file, doi, request, bot_id):
     try:
         filename = file.name
         save_path = os.path.join(PDF_FILES, file.name)
-        with open(save_path, "wb+") as destination:
+        with open(save_path, 'wb+') as destination:
             for chunk in file.chunks():
                 destination.write(chunk)
-            logger.info(f"File saved: {filename}")
+            logger.info(f'File saved: {filename}')
 
     except Exception as e:
-        logger.error(f"Error saving file: {e}")
+        logger.error(f'Error saving file: {e}')
 
-    with open(save_path, "rb") as f:
+    with open(save_path, 'rb') as f:
         pdf_message = await bot.send_document(
             chat_id=SEARCH_CHAT_ID, document=f, filename=file.name
         )
@@ -283,19 +301,19 @@ async def validate_broken_pdf(file, doi, request, bot_id):
     # Записываем в бд информацию о загруженном pdf
     user, _ = await ChatUser.objects.aget_or_create(
         telegram_id=bot_id,
-        defaults={"username": BOT_NAME_SCISOURCE, "is_in_bot": True},
+        defaults={'username': BOT_NAME_SCISOURCE},
         is_bot=True,
     )
 
     pdf_upload = await PDFUpload.objects.acreate(
-        file_id="",
+        file_id='',
         request=request,
         user=user,
         message_id=pdf_message.message_id,
-        state="uploaded",
+        state='uploaded',
         path=save_path,
     )
-    logger.info(f"PDF information is recorded in the db {pdf_upload}")
+    logger.info(f'PDF information is recorded in the db {pdf_upload}')
     await send_verification_message(pdf_upload)
 
 
@@ -304,7 +322,6 @@ def check_and_award_subscription(chat_user, count):
     Проверяет достиг ли пользователь порога загрузок (Z) или проверок (H).
     Выдаёт подписку, если достиг. Записывает информацию в базу данных.
     """
-
     config = Config.objects.first()
     if not config:
         return False
@@ -321,7 +338,7 @@ def check_and_award_subscription(chat_user, count):
         count_sub_upl = count.upload_count // z
         # оставшееся количество загрузое пользователя
         upl_c_remain = count.upload_count % z
-        new_data = award_subscription(chat_user, "uploads", count_sub_upl)
+        new_data = award_subscription(chat_user, 'uploads', count_sub_upl)
         count.upload_count = upl_c_remain
         count.subscriptions_for_upload += count_sub_upl
         count.save()
@@ -332,7 +349,7 @@ def check_and_award_subscription(chat_user, count):
         count_sub_val = count.validation_count // h
         # оставшееся количество проверок пользователя
         val_c_remain = count.validation_count % h
-        new_data = award_subscription(chat_user, "validations", count_sub_val)
+        new_data = award_subscription(chat_user, 'validations', count_sub_val)
         count.validation_count = val_c_remain
         count.subscriptions_for_validation += count_sub_val
         count.save()
@@ -342,8 +359,8 @@ def check_and_award_subscription(chat_user, count):
         Subscription.objects.update_or_create(
             user=chat_user,
             defaults={
-                "start_date": new_data["start_at"],
-                "end_date": new_data["end_at"],
+                'start_date': new_data['start_at'],
+                'end_date': new_data['end_at'],
             },
         )
 
@@ -351,22 +368,25 @@ def check_and_award_subscription(chat_user, count):
 
 
 async def send_verification_message(pdf_upload):
+    """Отправляет сообщение с кнопками для голосования по PDF в общий чат."""
+
+    bot = get_bot()
     # Если есть запрос на статью с таким DOI,
     # то отправляется сообщение с кнопками в ответ на PDF
     message = await bot.send_message(
         chat_id=SEARCH_CHAT_ID,
-        text=f"Пожалуйста, проверьте PDF. Запрос: https://doi.org/{request.doi}",
+        text=f'Пожалуйста, проверьте PDF. Запрос: https://doi.org/{pdf_upload.request.doi}',
         reply_to_message_id=pdf_upload.message_id,
         reply_markup=InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton(
-                        "✅ Всё верно",
-                        callback_data=f"vote_valid:{pdf_upload.id}",
+                        '✅ Всё верно',
+                        callback_data=f'vote_valid:{pdf_upload.id}',
                     ),
                     InlineKeyboardButton(
-                        "❌ PDF неверный",
-                        callback_data=f"vote_invalid:{pdf_upload.id}",
+                        '❌ PDF неверный',
+                        callback_data=f'vote_invalid:{pdf_upload.id}',
                     ),
                 ]
             ]
@@ -374,22 +394,29 @@ async def send_verification_message(pdf_upload):
     )
     pdf_upload.reply_to_message_id = message.message_id
     await pdf_upload.asave()
-    logger.info(f"Verification message sent for article, DOI: {doi}")
+    logger.info(
+        f'Verification message sent for article, DOI: {pdf_upload.request.doi}'
+    )
 
 
 async def send_thank_message(user, action):
+    """
+    Отправляет благодарственные сообщения пользователям
+    за загрузку или проверку PDF.
+    Сохраняет информацию в бд.
+    """
     # Проверяем наличие юзера в канале
     result = check_is_user(user)
     count = await Count.objects.filter(user=user).afirst()
-    N = count.upload_count if action == "upload" else count.validation_count
+    N = count.upload_count if action == 'upload' else count.validation_count
     if not result:
         # Отправляем благодарственное сообщение в общий чат
         # для пользователя (не состоит в канале)
-        if action == "upload":
-            words_action = "поделившись исследованием"
-        elif action == "validation":
-            words_action = "проверив исследование"
-        text = f"@{user.username}, Вы помогли {N} {form_word(N)} (всего), {words_action}! Зайдите в {BOT_NAME_SCISOURCE} для того,\ чтобы получить награду."
+        if action == 'upload':
+            words_action = 'поделившись исследованием'
+        elif action == 'validation':
+            words_action = 'проверив исследование'
+        text = f'@{user.username}, Вы помогли {N} {form_word(N)} (всего), {words_action}! Зайдите в {BOT_NAME_SCISOURCE} для того, чтобы получить награду.'
 
         thank_message = await bot.send_message(
             chat_id=SEARCH_CHAT_ID, text=text
@@ -405,9 +432,9 @@ async def send_thank_message(user, action):
         await notification.asave()
     elif not user.is_bot:
         config = await Config.objects.afirst()
-        if action == "upload":
+        if action == 'upload':
             count, limit = count.upload_count, config.uploads_for_subscription
-        elif action == "validation":
+        elif action == 'validation':
             count, limit = (
                 count.validation_count,
                 config.validations_for_subscription,
@@ -420,8 +447,8 @@ async def send_thank_message(user, action):
         # Пользователь состоит в канале
         notification = Notification(
             user=user,
-            chat_id=data["chat_id"],
-            chat_message_id=data["message_id"],
+            chat_id=data['chat_id'],
+            chat_message_id=data['message_id'],
             type=action,
         )
         await notification.asave()

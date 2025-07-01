@@ -1,13 +1,14 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from bot.models import PDFUpload, Validation, Request, Count
+from bot.models import Count, Request, PDFUpload, Validation
 from bot.services import check_and_award_subscription
 
 
 @receiver(post_save, sender=PDFUpload)
 def on_pdfupload_created(sender, instance, created, **kwargs):
-    """Сигнал: при создании PDFUpload инкрементим счетчик загрузок
+    """
+    Сигнал: при создании PDFUpload инкрементим счетчик загрузок
     и проверяем достижение порога подписки.
     """
 
@@ -27,7 +28,8 @@ def on_pdfupload_created(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender=Validation)
 def on_validation_created(sender, instance, created, **kwargs):
-    """Сигнал: при создании Validation инкрементим счетчик проверок
+    """
+    Сигнал: при создании Validation инкрементим счетчик проверок
     и проверяем достижение порога подписки.
     """
     if not created or instance.user is None:

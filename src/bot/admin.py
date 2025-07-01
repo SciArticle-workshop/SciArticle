@@ -5,6 +5,7 @@ from django.utils import timezone
 from bot.models import (
     ChatUser,
     Config,
+    Count,
     Notification,
     PDFUpload,
     Request,
@@ -23,6 +24,10 @@ class ConfigAdmin(admin.ModelAdmin):
         'validations_for_subscription'
     ]
     readonly_fields = ['id']
+    search_fields = [
+        'uploads_for_subscription',
+        'validations_for_subscription'
+    ]
 
     def has_add_permission(self, request):
         return not Config.objects.exists()
@@ -73,22 +78,28 @@ class ValidationAdmin(admin.ModelAdmin):
 class ChatUserAdmin(admin.ModelAdmin):
     """Админка для модели ChatUser."""
 
-    list_display = [
-        'telegram_id',
-        'username',
-        'date_joined'
-    ]
+    list_display = ['telegram_id', 'username', 'date_joined', 'is_bot']
     list_filter = ['date_joined']
     search_fields = ['telegram_id', 'username']
-    readonly_fields = ['date_joined']
+    readonly_fields = ['date_joined', 'is_bot']
     fieldsets = [
-        ("Основная информация", {"fields": ["username", "telegram_id", "password"]}),
-        ("Статистика", {"fields": ["upload_count", "validation_count"]}),
         (
-            "Права доступа",
-            {"fields": ["is_active", "is_staff", "is_superuser", "groups", "user_permissions"]},
+            'Основная информация',
+            {'fields': ['username', 'telegram_id', 'password']},
         ),
-        ("Даты", {"fields": ["date_joined", "last_login"]}),
+        (
+            'Права доступа',
+            {
+                'fields': [
+                    'is_active',
+                    'is_staff',
+                    'is_superuser',
+                    'groups',
+                    'user_permissions',
+                ]
+            },
+        ),
+        ('Даты', {'fields': ['date_joined', 'last_login']}),
     ]
 
 
@@ -98,14 +109,40 @@ class NotificationAdmin(admin.ModelAdmin):
 
     list_display = [
         'user',
+        'chat_id',
         'type',
         'chat_message_id',
         'created_at',
-        'delete_at'
+        'delete_at',
     ]
     list_filter = ['type', 'created_at']
     search_fields = ['user__username', 'user__telegram_id']
     readonly_fields = ['created_at', 'delete_at']
+
+
+@admin.register(Count)
+class CountAdmin(admin.ModelAdmin):
+    """Админка для модели Count."""
+
+    list_display = [
+        'user',
+        'request_count',
+        'total_upload_count',
+        'total_validation_count',
+        'deleted_pdf_count',
+        'subscriptions_for_upload',
+        'subscriptions_for_validation'
+    ]
+    list_filter = ['user']
+    search_fields = [
+        'request_count',
+        'total_upload_count',
+        'total_validation_count',
+        'deleted_pdf_count',
+        'subscriptions_for_upload',
+        'subscriptions_for_validation'
+    ]
+    readonly_fields = ['id', 'user_id']
 
 
 @admin.register(Subscription)
@@ -123,8 +160,9 @@ class SubscriptionAdmin(admin.ModelAdmin):
         return format_html(
             '<span style="color: {};">{}</span>',
             'green' if active else 'red',
-            'Активна' if active else 'Истекла'
+            'Активна' if active else 'Истекла',
         )
+
     is_active.short_description = 'Статус'
 
 
