@@ -123,7 +123,9 @@ class PDFUpload(models.Model):
     )
     file_id = models.CharField(default='', verbose_name='Уникальный ID файла')
     state = models.CharField(
-        max_length=25, choices=STATE, default='', verbose_name='Сосотояние'
+        max_length=25,
+        choices=STATE,
+        verbose_name='Состояние'
     )
 
     class Meta:
@@ -296,8 +298,8 @@ class Count(models.Model):
     Счетчики:
     - количество запросов на PDF
     - количество загрузок PDF
-    - количество проверок;
-    - количество проверок, количество удаленных PDF
+    - количество проверок
+    - количество удаленных PDF
     - количество подписок, полученных за поверку
     - количество подписок, полученных за загрузку.
     """
