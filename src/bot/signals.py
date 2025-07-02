@@ -59,14 +59,15 @@ def on_request_created(sender, instance, created, **kwargs):
 
 
 @receiver(post_save, sender=PDFUpload)
-def on_deleted_created(sender, instance, created, **kwargs):
+def on_pdfupload_deleted(sender, instance, created, **kwargs):
     """Сигнал: при удалении PDF инкрементим счетчик удаленных pdf."""
 
-    if not created or instance.user is None:
+    if created or instance.user is None:
         return
 
     user = instance.user
-    count, _ = Count.objects.get_or_create(user=user)
 
-    count.deleted_pdf_count = (count.deleted_pdf_count or 0) + 1
-    count.save()
+    if instance.state == 'deleted':
+        count, _ = Count.objects.get_or_create(user=user)
+        count.deleted_pdf_count = (count.deleted_pdf_count or 0) + 1
+        count.save()
