@@ -4,6 +4,11 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
 
+from sciarticle.settings import (
+    DEFAULT_UPLOAD_FOR_SUBSCRIPTION,
+    DEFAULT_VALIDATION_FOR_SUBSCRIPTION
+)
+
 STATUS = (
     ('pending', 'в ожидании'),
     ('completed', 'завершенный'),
@@ -249,11 +254,11 @@ class Config(models.Model):
     """
 
     uploads_for_subscription = models.PositiveIntegerField(
-        default=10,
+        default=DEFAULT_UPLOAD_FOR_SUBSCRIPTION,
         help_text='Количество загрузок pdf, необходимое для подписки')
 
     validations_for_subscription = models.PositiveIntegerField(
-        default=20,
+        default=DEFAULT_VALIDATION_FOR_SUBSCRIPTION,
         help_text='Количество проверок pdf, необходимое для подписки')
 
     class Meta:
