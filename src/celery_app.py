@@ -15,7 +15,7 @@ app.autodiscover_tasks()
 
 app.conf.beat_schedule = {
     'run_every_hour': {  # название задачи
-        'task': 'bot.tasks.run_check',  # путь к задаче
+        'task': "bot.tasks.run_check",  # путь к задаче
         'schedule': timedelta(hours=1),  # каждый час
     },
     'delete_pdf': {

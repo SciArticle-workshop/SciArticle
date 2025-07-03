@@ -1,4 +1,5 @@
 from django.apps import AppConfig
+from django.db.utils import OperationalError, ProgrammingError
 
 
 class BotConfig(AppConfig):
@@ -8,3 +9,12 @@ class BotConfig(AppConfig):
 
     def ready(self):
         import bot.signals # noqa
+
+        # Создаем запись Config в бд при запуске автоматически,
+        # если еще ее нет с дефолтными значениями
+        try:
+            from bot.models import Config
+            if not Config.objects.exists():
+                Config.objects.create()
+        except (OperationalError, ProgrammingError):
+            pass

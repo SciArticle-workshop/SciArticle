@@ -39,7 +39,7 @@ services:
       - PYTHONPATH=/app
       - DJANGO_SETTINGS_MODULE=sciarticle.settings
     volumes:
-      - ..:/app
+      - ../src:/app/src
     working_dir: /app/src
     command: [ "poetry", "run", "celery", "-A", "src.celery_app", "worker", "--loglevel=info" ]
     networks:
@@ -60,7 +60,7 @@ services:
       - PYTHONPATH=/app
       - DJANGO_SETTINGS_MODULE=sciarticle.settings
     volumes:
-      - ..:/app
+      - ../src:/app/src
     working_dir: /app/src
     command: [ "poetry", "run", "celery", "-A", "src.celery_app", "beat", "--loglevel=info" ]
     networks:
@@ -83,7 +83,7 @@ services:
     entrypoint: ["/app/src/entrypoint.sh"]
     command: ["poetry", "run", "python", "manage.py", "runserver", "0.0.0.0:8000"]
     volumes:
-      - ..:/app
+      - ../src:/app/src
     ports:
       - "8000:8000"
     depends_on:
@@ -105,7 +105,7 @@ services:
       - DJANGO_SETTINGS_MODULE=sciarticle.settings
     working_dir: /app/src
     volumes:
-      - ..:/app
+      - ../src:/app/src
     command: [ "poetry", "run", "python", "bot/bot.py" ]
     depends_on:
       - redis

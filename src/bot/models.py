@@ -4,52 +4,45 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
 
+from sciarticle.settings import (
+    DEFAULT_UPLOAD_FOR_SUBSCRIPTION,
+    DEFAULT_VALIDATION_FOR_SUBSCRIPTION
+)
+
 STATUS = (
-    ("pending", "в ожидании"),
-    ("completed", "завершено"),
-    ("expired", "истекло"),
-    ("removed", "удалено"),
+    ('pending', 'в ожидании'),
+    ('completed', 'завершенный'),
+    ('expired', 'истекший')
 )
 
 STATE = (
-    ("uploaded", "загружено"),
-    ("validated", "проверено"),
-    ("deleted", "удалено"),
+    ('uploaded', 'загружено'),
+    ('validated', 'проверено'),
+    ('deleted', 'удалено'),
 )
 
-TYPE = (("upload", "загрузка"), ("validation", "валидация"))
+TYPE = (('upload', 'загрузка'), ('validation', 'проверка'))
 
-REASON = (("uploads", "загрузки"), ("validations", "валидации"))
+REASON = (('uploads', 'загрузки'), ('validations', 'проверки'))
 
 
 class ChatUser(AbstractUser):
     """Пользователь."""
 
     telegram_id = models.BigIntegerField(
-        unique=True, null=True, blank=True, verbose_name="Telegram ID"
+        unique=True, null=True, blank=True, verbose_name='Telegram ID'
     )
     username = models.CharField(
-        max_length=25, unique=True, null=True, verbose_name="Имя пользователя"
+        max_length=25, unique=True, null=True, verbose_name='Имя пользователя'
     )
     join_date = models.DateTimeField(
-        auto_now_add=True, verbose_name="Дата присоединения"
+        auto_now_add=True, verbose_name='Дата присоединения'
     )
-    is_in_bot = models.BooleanField(
-        default=False,
-        help_text="Взаимодействовал ли пользователь с ботом",
-        verbose_name="Пользователь в боте",
-    )
-    upload_count = models.BigIntegerField(
-        default=0, verbose_name="Количество загрузок"
-    )
-    validation_count = models.BigIntegerField(
-        default=0, verbose_name="Количество валидаций"
-    )
+    is_bot = models.BooleanField(default=False, verbose_name='Это бот')
 
     class Meta:
-        verbose_name = "пользователь"
-        verbose_name_plural = "Пользователи"
-        app_label = "bot"
+        verbose_name = 'пользователь'
+        verbose_name_plural = 'Пользователи'
 
     def __str__(self):
         return f"{self.telegram_id} {self.username}"
@@ -58,24 +51,26 @@ class ChatUser(AbstractUser):
 class Request(models.Model):
     """Запрос PDF."""
 
-    doi = models.CharField(max_length=256, verbose_name="DOI")
-    created_at = models.DateTimeField("Дата создания", auto_now_add=True)
-    expires_at = models.DateTimeField("Дата истечения")
+    doi = models.CharField(max_length=256, verbose_name='DOI')
+    created_at = models.DateTimeField('Дата создания', auto_now_add=True)
+    expires_at = models.DateTimeField('Дата истечения срока')
     status = models.CharField(
-        max_length=25, choices=STATUS, verbose_name="Статус запроса"
+        max_length=25,
+        choices=STATUS,
+        verbose_name='Статус запроса'
     )
-    chat_id = models.BigIntegerField(verbose_name="ID чата")
+    chat_id = models.BigIntegerField(verbose_name='ID чата')
     user = models.ForeignKey(
         ChatUser,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="requests",
-        verbose_name="Пользователь",
+        related_name='requests',
+        verbose_name='Пользователь'
     )
-    message_id = models.IntegerField(default=0, verbose_name="ID сообщения")
+    message_id = models.IntegerField(default=0, verbose_name='ID сообщения')
     message_search_id = models.IntegerField(
-        default=0, verbose_name="ID сообщения поиска"
+        default=0, verbose_name='ID сообщения в чате'
     )
 
     class Meta:
@@ -100,35 +95,37 @@ class PDFUpload(models.Model):
     request = models.ForeignKey(
         Request,
         on_delete=models.CASCADE,
-        related_name="uploads",
-        verbose_name="Запрос",
+        related_name='uploads',
+        verbose_name='Запрос'
     )
     user = models.ForeignKey(
         ChatUser,
         on_delete=models.CASCADE,
-        related_name="uploads",
-        verbose_name="Пользователь",
+        related_name='uploads',
+        verbose_name='Пользователь'
     )
-    path = models.CharField(default="", verbose_name="Путь к файлу")
+    path = models.CharField(default='', verbose_name='Путь к файлу')
     created_at = models.DateTimeField(
-        default=timezone.now, verbose_name="Дата загрузки"
+        default=timezone.now, verbose_name='Дата создания'
     )
     validated_at = models.DateTimeField(
-        null=True, blank=True, verbose_name="Дата проверки"
+        null=True, blank=True, verbose_name='Дата проверки'
     )
     is_valid = models.BooleanField(
-        null=True, blank=True, verbose_name="Проверено"
+        null=True, blank=True, verbose_name='Валидный/Невалидный'
     )
     delete_at = models.DateTimeField(
-        null=True, blank=True, verbose_name="Дата удаления"
+        null=True, blank=True, verbose_name='Дата удаления из чата'
     )
-    message_id = models.BigIntegerField(default=0, verbose_name="ID сообщения")
+    message_id = models.BigIntegerField(default=0, verbose_name='ID сообщения')
     reply_to_message_id = models.BigIntegerField(
-        default=0, verbose_name="ID ответа"
+        default=0, verbose_name='ID reply сообщения'
     )
-    file_id = models.CharField(default="", verbose_name="ID файла")
+    file_id = models.CharField(default='', verbose_name='Уникальный ID файла')
     state = models.CharField(
-        max_length=25, choices=STATE, default="uploaded", verbose_name="Состояние"
+        max_length=25,
+        choices=STATE,
+        verbose_name='Состояние'
     )
 
     class Meta:
@@ -153,24 +150,24 @@ class Validation(models.Model):
     pdf_upload = models.ForeignKey(
         PDFUpload,
         on_delete=models.CASCADE,
-        related_name="validations",
-        verbose_name="Загрузка PDF",
+        related_name='validations',
+        verbose_name='Загруженный pdf файл'
     )
     user = models.ForeignKey(
         ChatUser,
         on_delete=models.CASCADE,
-        related_name="validations",
-        verbose_name="Пользователь",
+        related_name='validations',
+        verbose_name='Пользователь'
     )
-    vote = models.BooleanField(verbose_name="Голос")
+    vote = models.BooleanField(verbose_name='Голос')
     voted_at = models.DateTimeField(
-        auto_now_add=True, verbose_name="Дата голосования"
+        auto_now_add=True, verbose_name='Дата голосования'
     )
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["pdf_upload", "user"], name="unique_upload"
+                fields=['pdf_upload', 'user'], name='unique_upload'
             ),
         ]
         verbose_name = "валидация"
@@ -181,11 +178,11 @@ class Validation(models.Model):
 
         if self.user == self.pdf_upload.user:
             raise ValidationError(
-                "Пользователи не могут валидировать свои собственные загрузки"
+                'Пользователи, загрузившие статью, не могут участвовать в проверке'
             )
         if self.user == self.pdf_upload.request.user:
             raise ValidationError(
-                "Создатели запросов не могут валидировать загрузки для своих собственных запросов"
+                'Пользователи, запросившие статью, не могут участвовать в проверке'
             )
 
     def __str__(self):
@@ -198,21 +195,23 @@ class Notification(models.Model):
     user = models.ForeignKey(
         ChatUser,
         on_delete=models.CASCADE,
-        related_name="notifications",
-        verbose_name="Пользователь",
+        related_name='notifications',
+        verbose_name='Пользователь'
     )
     type = models.CharField(
-        max_length=25, choices=TYPE, verbose_name="Тип уведомления"
+        max_length=25,
+        choices=TYPE,
+        verbose_name='Тип: загрузка pdf/проверка pdf'
     )
-    chat_id = models.BigIntegerField(default=0, verbose_name="ID чата")
+    chat_id = models.BigIntegerField(default=0, verbose_name='ID чата')
     chat_message_id = models.BigIntegerField(
-        default=0, verbose_name="ID сообщения в чате"
+        default=0, verbose_name='ID сообщения в чате'
     )
     created_at = models.DateTimeField(
-        default=timezone.now, verbose_name="Дата создания"
+        default=timezone.now, verbose_name='Дата создания'
     )
     delete_at = models.DateTimeField(
-        null=True, blank=True, verbose_name="Дата удаления"
+        null=True, blank=True, verbose_name='Дата удаления'
     )
 
     class Meta:
@@ -235,45 +234,38 @@ class Subscription(models.Model):
     user = models.ForeignKey(
         ChatUser,
         on_delete=models.CASCADE,
-        related_name="subscriptions",
-        verbose_name="Пользователь",
+        related_name='subscriptions',
+        verbose_name='Пользователь'
     )
-    start_date = models.DateTimeField(
-        "Дата начала подписки", auto_now_add=True
-    )
-    end_date = models.DateTimeField("Дата окончания подписки")
-    reason = models.CharField(
-        max_length=25, choices=REASON, verbose_name="Причина выдачи подписки"
-    )
+    start_date = models.DateTimeField('Дата начала подписки')
+    end_date = models.DateTimeField('Дата окончания подписки')
 
     class Meta:
         verbose_name = "подписка"
         verbose_name_plural = "Подписки"
 
     def __str__(self):
-        return f"{self.user} {self.start_date}"
+        return f'{self.user} {self.start_date} {self.end_date}'
 
 
 class Config(models.Model):
-    """Model for storing configurable threshold values and other parameters.
-    Designed to have only one instance that can be edited through Django Admin.
+    """
+    Модель для хранения настраиваемых пороговых значений:
+    счетчика загрузок и счетчика проверок.
+    Счетчики можно редактировать через админку Django.
     """
 
     uploads_for_subscription = models.PositiveIntegerField(
-        default=10,
-        help_text="Количество загрузок, необходимых для получения подписки",
-        verbose_name="Загрузки для подписки",
-    )
+        default=DEFAULT_UPLOAD_FOR_SUBSCRIPTION,
+        help_text='Количество загрузок pdf, необходимое для подписки')
 
     validations_for_subscription = models.PositiveIntegerField(
-        default=20,
-        help_text="Количество валидаций (голосов), необходимых для получения подписки",
-        verbose_name="Валидации для подписки",
-    )
+        default=DEFAULT_VALIDATION_FOR_SUBSCRIPTION,
+        help_text='Количество проверок pdf, необходимое для подписки')
 
     class Meta:
-        verbose_name = "Конфигурация"
-        verbose_name_plural = "Конфигурации"
+        verbose_name = 'Конфигурация'
+        verbose_name_plural = 'Конфигурации'
 
     def clean(self):
         """Ensure that only one instance of Config can exist."""
@@ -289,8 +281,64 @@ class Config(models.Model):
 
     @classmethod
     def get_instance(cls):
-        """Get the singleton instance of Config, creating it if it doesn't exist.
+        """
+        Get the singleton instance of Config,
+        creating it if it doesn't exist.
         This ensures there's always a configuration available.
         """
         instance, created = cls.objects.get_or_create(pk=1)
         return instance
+
+    def __str__(self):
+        return f'{self.uploads_for_subscription} {self.validations_for_subscription}'
+
+
+class Count(models.Model):
+    """
+    Счетчики:
+    - количество запросов на PDF
+    - количество загрузок PDF
+    - количество проверок
+    - количество удаленных PDF
+    - количество подписок, полученных за поверку
+    - количество подписок, полученных за загрузку.
+    """
+
+    user = models.OneToOneField(
+        ChatUser,
+        on_delete=models.CASCADE,
+        related_name='counts',
+        verbose_name='Пользователь'
+    )
+    request_count = models.PositiveBigIntegerField(
+        default=0, verbose_name='Запрос'
+    )
+    upload_count = models.PositiveBigIntegerField(
+        default=0, verbose_name='Счетчик загрузок pdf'
+    )
+    total_upload_count = models.PositiveBigIntegerField(
+        default=0,
+        verbose_name='Счетчик всех pdf файлов, которые загрузил пользователь'
+    )  # Все загрузки пользователя
+    validation_count = models.PositiveBigIntegerField(
+        default=0, verbose_name='Счетчик проверок пользователя'
+    )
+    total_validation_count = models.PositiveBigIntegerField(
+        default=0,
+        verbose_name='Счетчик всех pdf файлов, которые проверил пользователь'
+    )  # Все проверки пользователя
+    deleted_pdf_count = models.PositiveBigIntegerField(
+        default=0, verbose_name='Счетчик всех pdf, которые были удалены')
+    subscriptions_for_upload = models.PositiveBigIntegerField(
+        default=0, verbose_name='Счетчик подписок за загрузку pdf файлов'
+    )
+    subscriptions_for_validation = models.PositiveBigIntegerField(
+        default=0, verbose_name='Счетчик подписок, полученных за голосование'
+    )
+
+    class Meta:
+        verbose_name = 'счетчик'
+        verbose_name_plural = 'Счетчики'
+
+    def __str__(self):
+        return f'{self.user.telegram_id} {self.user.username}'

@@ -180,3 +180,6 @@ docs/*.xlsx
 staticfiles
 
 .DS_Store
+
+pdf_files/
+.idea
