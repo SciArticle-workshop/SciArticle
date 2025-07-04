@@ -75,7 +75,7 @@ SciArticle — это серверное приложение и Telegram-бот
 ```python
 TELEGRAM_BOT_TOKEN=your_bot_token_here # Бот @SciArticleBot
 
-SOURCE_SERVER_URL=http://your-api  # URL сервиса, который принимает POST-запросы
+SOURCE_SERVER_URL=http://your-api # URL сервиса, который принимает POST-запросы
 
 SEARCH_CHAT_ID=id_sciarticle_search_chat  # Общий чат всех пользователей
 
