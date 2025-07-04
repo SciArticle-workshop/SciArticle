@@ -1,156 +1,310 @@
 # SciArticle
 
-SciArticle is a web application designed to help users find and share scientific articles. It includes a Telegram bot that allows users to search for articles by DOI (Digital Object Identifier), request PDFs, and collaborate with other users to validate uploaded articles.
+[![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
+[![Django](https://img.shields.io/badge/django-4.2+-blue.svg)](https://www.djangoproject.com/)
 
-## Features
+[RU](#ru-section) - [EN](#en-section)
 
-- **Article Requests**: Users can request articles by providing a DOI
-- **PDF Uploads**: Community members can upload PDFs in response to requests
-- **Validation System**: Community-based validation of uploaded PDFs
-- **Reward System**: Users earn subscription benefits for contributing uploads and validations
-- **Telegram Integration**: Access the service directly through a Telegram bot
+<a id="ru-section"></a>
+## RU
+---
 
-## Technology Stack
+# SciArticle
 
-- **Backend**: Django (Python)
-- **Task Queue**: Celery with Redis
-- **Testing**: pytest
-- **Containerization**: Docker and docker-compose
-- **Database**: PostgreSQL (implied from Docker setup)
+SciArticle — это серверное приложение и Telegram-бот, предназначенные для организации краудсорсинга и валидации научных статей в PDF-формате. Сервис работает как вспомогательный бэкенд для основного бота **`@SciSourceBot`**, предоставляя ему функциональность для взаимодействия с сообществом.
+
+Основная задача проекта — создать управляемое сообществом пространство, где пользователи могут выполнять запросы на статьи, загружать недостающие PDF-файлы и коллективно проверять их подлинность, получая за это вознаграждение в виде подписки в основном сервисе.
+
+## Ключевые возможности
+
+- **Обработка запросов по DOI**: Принимает API-запросы от основного бота и публикует их в специальном чате.
+- **Краудсорсинг PDF**: Участники сообщества могут загружать PDF-файлы в ответ на опубликованные запросы.
+- **Коллективная валидация**: Система голосования (`✅ Всё верно` / `❌ PDF неверный`) позволяет сообществу проверять соответствие загруженного PDF запрошенной статье.
+- **Система вознаграждений**: Автоматически отслеживает вклад пользователей (загрузки и валидации) и запрашивает выдачу подписки через API основного бота при достижении пороговых значений.
+- **Автоматическая очистка чата**: Управляет жизненным циклом сообщений в чате, удаляя устаревшие запросы, проверенные PDF и временные уведомления.
+- **Внутренний API**: Предоставляет эндпоинты для взаимодействия с основным ботом `SciSourceBot`.
+
+## [Архитектура и принцип работы](docs/architecture.md)
+
+## Стек технологий
+
+- **Бэкенд**: Django, Django REST Framework
+- **База данных**: PostgreSQL
+- **Очередь задач**: Celery
+- **Брокер сообщений**: Redis
+- **Telegram-бот**: `python-telegram-bot`
+- **Веб-сервер (в Docker)**: WSGI + WhiteNoise
+- **Контейнеризация**: Docker
+
+## Структура проекта
+
+```
+.
+├── data/                    # Данные (например, БД), монтируемые в Docker
+├── docs/                    # Документация
+├── infra/                   # Конфигурация инфраструктуры
+│   ├── docker-compose.yml   # Оркестрация контейнеров
+│   ├── Dockerfile           # Сборка образа приложения
+│   └── initdb/              # SQL-скрипты для инициализации БД
+├── src/                     # Исходный код приложения
+│   ├── api/                 # Django-приложение для REST API
+│   ├── bot/                 # Django-приложение для логики бота
+│   │   ├── handlers/        # Обработчики сообщений и колбэков
+│   │   ├── migrations/
+│   │   ├── tasks.py         # Асинхронные задачи Celery
+│   │   └── services.py      # Бизнес-логика бота
+│   ├── sciarticle/          # Основные настройки Django проекта
+│   ├── celery_app.py        # Конфигурация Celery
+│   └── manage.py            # Утилита управления Django
+├── poetry.lock              # Зафиксированные версии зависимостей
+├── pyproject.toml           # Определение проекта и его зависимостей
+└── README.md
+```
+
+## [Установка и запуск](docs/installation.md)
+
+### Предварительные требования
+
+- Python 3.12+
+- Poetry
+- Docker и Docker Compose
+## Переменные окружения
+
+Создайте файл `.env` в директории infra и определите в нем переменные из `env.example`.
+
+```python
+TELEGRAM_BOT_TOKEN=your_bot_token_here # Бот @SciArticleBot
+
+SOURCE_SERVER_URL=http://your-api  # URL сервиса, который принимает POST-запросы
+
+SEARCH_CHAT_ID=id_sciarticle_search_chat  # Общий чат всех пользователей
+
+API_SECRET_TOKEN=your_secret_token  # Для защиты HTTP-запросов между сервисами без участия пользователей
+
+DEFAULT_UPLOAD_FOR_SUBSCRIPTION=default_number # Число загрузок для подписки дефолтное
+
+DEFAULT_VALIDATION_FOR_SUBSCRIPTION=default_number # Число голосований для подписки дефолтное
+```
+## API Endpoints
+
+Сервис предоставляет REST API для взаимодействия с основным ботом `@SciSourceBot`. Все эндпоинты требуют заголовок `X-API-Token` для авторизации.
+
+| Метод  | Путь                                    | Описание                                                               |
+| :----- | :-------------------------------------- | :--------------------------------------------------------------------- |
+| `POST` | `/api/request-pdf/`                     | Создает новый запрос на поиск статьи по DOI.                           |
+| `PUT`  | `/api/request-pdf/<int:pk>/`            | Обновляет существующий запрос (например, `message_search_id`).         |
+| `POST` | `/api/validate_broken-pdf/`             | Принимает "сломанный" PDF от основного бота и инициирует его валидацию.|
+
+## Фоновые задачи (Celery Beat)
+
+Планировщик запускает периодические задачи для поддержания системы в актуальном состоянии:
+
+| Задача                                     | Расписание         | Описание                                                                                                   |
+| ------------------------------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `bot.tasks.run_check`                      | Каждый час        | Находит истекшие запросы (старше 47 часов), меняет их статус на `expired` и уведомляет основной сервис.       |
+| `bot.tasks.run_check_and_delete_pdf`       | Каждый час        | Удаляет сообщения с PDF-файлами, которые были загружены или провалидированы более 47 часов назад.          |
+| `bot.tasks.run_check_and_delete_thank_message` | Каждые 20 минут    | Удаляет временные благодарственные сообщения, отправленные пользователям в чат (срок жизни - 1 час).       |
+
+## Тестирование
+
+Для запуска тестов используйте `pytest`:
+
+```bash
+poetry run pytest
+```
+
+## Лицензия
+
+Этот проект лицензирован в соответствии с условиями, указанными в файле `LICENSE`.
+
+## Участники проекта (Contributors)
+
+
+<table>
+  <tr>
+        <td align="center">
+      <a href="https://github.com/TatyanaYus">
+        <img src="https://github.com/TatyanaYus.png?size=100" width="100px;" alt="TatyanaYus"/>
+        <br />
+        <sub><b>TatyanaYus</b></sub>
+      </a>
+    </td>
+        <td align="center">
+      <a href="https://github.com/aeee78">
+        <img src="https://github.com/aeee78.png?size=100" width="100px;" alt="aeee78"/>
+        <br />
+        <sub><b>aeee78</b></sub>
+      </a>
+    </td>
+        <td align="center">
+      <a href="https://github.com/AndreyZimin99">
+        <img src="https://github.com/AndreyZimin99.png?size=100" width="100px;" alt="AndreyZimin99"/>
+        <br />
+        <sub><b>AndreyZimin99</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/FrostWillmott">
+        <img src="https://github.com/FrostWillmott.png?size=100" width="100px;" alt="FrostWillmott"/>
+        <br />
+        <sub><b>FrostWillmott</b></sub>
+      </a>
+    </td>
+
+  </tr>
+</table>
+
+
+<br>
+<br>
+
+<a id="en-section"></a>
+## EN
+---
+
+# SciArticle
+
+SciArticle is a server application and Telegram bot designed for crowdsourcing and validating scientific articles in PDF format. The service acts as a supporting backend for the main bot, **`@SciSourceBot`**, providing it with functionality to interact with the community.
+
+The main goal of the project is to create a community-driven space where users can request articles, upload missing PDF files, and collectively verify their authenticity, receiving rewards in the form of a subscription to the main service for their contributions.
+
+## Key Features
+
+- **DOI Request Processing**: Accepts API requests from the main bot and publishes them in a dedicated chat.
+- **PDF Crowdsourcing**: Community members can upload PDF files in response to published requests.
+- **Collective Validation**: A voting system (`✅ Correct` / `❌ Incorrect PDF`) allows the community to verify that the uploaded PDF matches the requested article.
+- **Reward System**: Automatically tracks user contributions (uploads and validations) and requests the issuance of a subscription via the main bot's API when thresholds are met.
+- **Automatic Chat Cleanup**: Manages the lifecycle of messages in the chat, deleting outdated requests, verified PDFs, and temporary notifications.
+- **Internal API**: Provides endpoints for interaction with the main bot `SciSourceBot`.
+
+## [Architecture and How It Works](docs/architecture.md)
+
+## Tech Stack
+
+- **Backend**: Django, Django REST Framework
+- **Database**: PostgreSQL
+- **Task Queue**: Celery
+- **Message Broker**: Redis
+- **Telegram Bot**: `python-telegram-bot`
+- **Web Server (in Docker)**: WSGI + WhiteNoise
+- **Containerization**: Docker
 
 ## Project Structure
 
-- **`src/`**: Main application code
-  - **`api/`**: API endpoints
-  - **`bot/`**: Telegram bot implementation
-  - **`common/`**: Shared utilities and components
-  - **`sciarticle/`**: Django project settings
-- **`tests/`**: Test suite
-- **`infra/`**: Infrastructure configuration (Docker, etc.)
-- **`data/`**: Data storage
-- **`docs/`**: Project documentation
+```
+.
+├── data/                    # Data (e.g., DB), mounted in Docker
+├── docs/                    # Documentation
+├── infra/                   # Infrastructure configuration
+│   ├── docker-compose.yml   # Container orchestration
+│   ├── Dockerfile           # Application image build
+│   └── initdb/              # SQL scripts for DB initialization
+├── src/                     # Application source code
+│   ├── api/                 # Django app for the REST API
+│   ├── bot/                 # Django app for the bot's logic
+│   │   ├── handlers/        # Message and callback handlers
+│   │   ├── migrations/
+│   │   ├── tasks.py         # Asynchronous Celery tasks
+│   │   └── services.py      # Bot's business logic
+│   ├── sciarticle/          # Main Django project settings
+│   ├── celery_app.py        # Celery configuration
+│   └── manage.py            # Django management utility
+├── poetry.lock              # Pinned dependency versions
+├── pyproject.toml           # Project definition and its dependencies
+└── README.md
+```
 
-## Setup and Installation
+## [Installation and Launch](docs/installation.md)
 
 ### Prerequisites
 
 - Python 3.12+
-- Poetry (Python package manager)
-- Docker and docker-compose (for containerized deployment)
-- Redis (for Celery task queue)
-
-### Local Development
-
-1. Clone the repository:
-```
-git clone https://github.com/yourusername/sciarticle.git
-   cd sciarticle
-```
-
-
-2. Install dependencies with Poetry:
-```
-poetry install
-```
-
-
-3. Create a `.env` file based on `.env.example`
-
-4. Run the development server:
-```
-poetry run python src/manage.py runserver
-```
-
-
-5. Start Celery worker:
-```
-poetry run celery -A src.celery_app worker -l info
-```
-
-
-### Testing
-
-Run tests with pytest:
-```
-poetry run pytest
-```
-
-
-Or use the provided script:
-```
-./run_tests.sh
-```
-
-
-### Docker Deployment
-
-Use docker-compose to build and run the application:
-```
-docker-compose up -d
-```
-
+- Poetry
+- Docker and Docker Compose
 
 ## Environment Variables
 
-Create a `.env` file in the project root with the following required variables:
+Create a `.env` file in the `infra` directory and define the variables from `env.example` in it.
 
-```
-# Database configuration
-POSTGRES_DB=sciarticle
-POSTGRES_USER=django
-POSTGRES_PASSWORD=your_secure_password
-DB_HOST=postgres  # Use 'localhost' for local development without Docker
-DB_PORT=5432
+```python
+TELEGRAM_BOT_TOKEN=your_bot_token_here # The @SciArticleBot bot
 
-# Telegram integration
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token  # Get this from @BotFather
+SOURCE_SERVER_URL=http://your-api   # URL of the service that accepts POST requests
 
-# Redis configuration (for Celery)
-REDIS_HOST=redis  # Use 'localhost' for local development without Docker
-REDIS_PORT=6379
+SEARCH_CHAT_ID=id_sciarticle_search_chat   # The main chat for all users
 
-# Django settings
-SECRET_KEY=your_django_secret_key  # Or leave empty to auto-generate
-DEBUG=True  # Set to False in production
-ALLOWED_HOSTS=localhost 127.0.0.1  # Add your domain in production
+API_SECRET_TOKEN=your_secret_token   # For securing HTTP requests between services without user involvement
+
+DEFAULT_UPLOAD_FOR_SUBSCRIPTION=default_number # Default number of uploads required for a subscription
+
+DEFAULT_VALIDATION_FOR_SUBSCRIPTION=default_number # Default number of validations required for a subscription
 ```
 
+## API Endpoints
 
-Optional environment variables with their defaults:
+The service provides a REST API for interaction with the main bot `@SciSourceBot`. All endpoints require an `X-API-Token` header for authorization.
+
+| Method | Path                                    | Description                                                              |
+| :----- | :-------------------------------------- | :----------------------------------------------------------------------- |
+| `POST` | `/api/request-pdf/`                     | Creates a new request to find an article by DOI.                         |
+| `PUT`  | `/api/request-pdf/<int:pk>/`            | Updates an existing request (e.g., setting `message_search_id`).       |
+| `POST` | `/api/validate_broken-pdf/`             | Receives a "broken" PDF from the main bot and initiates its validation.  |
+
+## Background Tasks (Celery Beat)
+
+The scheduler runs periodic tasks to keep the system up-to-date:
+
+| Task                                       | Schedule           | Description                                                                                                |
+| ------------------------------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `bot.tasks.run_check`                      | Every hour         | Finds expired requests (older than 47 hours), changes their status to `expired`, and notifies the main service. |
+| `bot.tasks.run_check_and_delete_pdf`       | Every hour         | Deletes messages with PDF files that were uploaded or validated more than 47 hours ago.                  |
+| `bot.tasks.run_check_and_delete_thank_message` | Every 20 minutes     | Deletes temporary "thank you" messages sent to users in the chat (lifespan - 1 hour).                      |
+
+## Testing
+
+To run the tests, use `pytest`:
+
+```bash
+poetry run pytest
 ```
-# Database engine
-DB_ENGINE=django.db.backends.postgresql
-```
-
-
-For local development, you can use the `.env.example` file as a template. In a production environment, make sure to:
-1. Set `DEBUG=False`
-2. Add your domain to `ALLOWED_HOSTS`
-3. Use strong, unique passwords
-4. Generate a proper `SECRET_KEY` rather than relying on auto-generation
-
-## Configuration
-
-The application uses environment variables for configuration as detailed above. See `.env.example` for more details.
-
-## How It Works
-
-1. Users request articles via the Telegram bot by providing a DOI
-2. Community members can upload PDFs to fulfill these requests
-3. Other users validate the uploaded PDFs
-4. Once validated, the requester receives the PDF
-5. Contributors earn rewards based on their participation
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Implement your changes
-4. Add tests for new functionality
-5. Create a pull request
-
-Please follow the project's coding standards and commit message conventions.
 
 ## License
 
-This project is licensed under the terms of the LICENSE file included in the repository.
+This project is licensed under the terms specified in the `LICENSE` file.
+
+## Contributors
+
+
+<table>
+  <tr>
+        <td align="center">
+      <a href="https://github.com/TatyanaYus">
+        <img src="https://github.com/TatyanaYus.png?size=100" width="100px;" alt="TatyanaYus"/>
+        <br />
+        <sub><b>TatyanaYus</b></sub>
+      </a>
+    </td>
+        <td align="center">
+      <a href="https://github.com/aeee78">
+        <img src="https://github.com/aeee78.png?size=100" width="100px;" alt="aeee78"/>
+        <br />
+        <sub><b>aeee78</b></sub>
+      </a>
+    </td>
+        <td align="center">
+      <a href="https://github.com/AndreyZimin99">
+        <img src="https://github.com/AndreyZimin99.png?size=100" width="100px;" alt="AndreyZimin99"/>
+        <br />
+        <sub><b>AndreyZimin99</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/FrostWillmott">
+        <img src="https://github.com/FrostWillmott.png?size=100" width="100px;" alt="FrostWillmott"/>
+        <br />
+        <sub><b>FrostWillmott</b></sub>
+      </a>
+    </td>
+
+  </tr>
+</table>
