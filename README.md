@@ -117,44 +117,9 @@ poetry run pytest
 
 Этот проект лицензирован в соответствии с условиями, указанными в файле `LICENSE`.
 
-## Участники проекта (Contributors)
+## Contributors
 
-
-<table>
-  <tr>
-        <td align="center">
-      <a href="https://github.com/TatyanaYus">
-        <img src="https://github.com/TatyanaYus.png?size=100" width="100px;" alt="TatyanaYus"/>
-        <br />
-        <sub><b>TatyanaYus</b></sub>
-      </a>
-    </td>
-        <td align="center">
-      <a href="https://github.com/aeee78">
-        <img src="https://github.com/aeee78.png?size=100" width="100px;" alt="aeee78"/>
-        <br />
-        <sub><b>aeee78</b></sub>
-      </a>
-    </td>
-        <td align="center">
-      <a href="https://github.com/AndreyZimin99">
-        <img src="https://github.com/AndreyZimin99.png?size=100" width="100px;" alt="AndreyZimin99"/>
-        <br />
-        <sub><b>AndreyZimin99</b></sub>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/FrostWillmott">
-        <img src="https://github.com/FrostWillmott.png?size=100" width="100px;" alt="FrostWillmott"/>
-        <br />
-        <sub><b>FrostWillmott</b></sub>
-      </a>
-    </td>
-
-  </tr>
-</table>
-
-
+Список участников проекта доступен [здесь](#contributors).
 <br>
 <br>
 
