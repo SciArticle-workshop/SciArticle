@@ -11,7 +11,9 @@ headers = {
 
 
 def send_request(request):
-    """Отправляет post-запрос с информацией о истекший запросах."""
+    """
+    Отправляет post-запрос с информацией о запросах, которые нужно удалить.
+    """
     data = {
         'message_id': request.message_id,
         'chat_id': request.chat_id,
