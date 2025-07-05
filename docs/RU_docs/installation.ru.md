@@ -50,7 +50,7 @@
     poetry run celery -A src.celery_app beat --loglevel=info
     ```
 
-5. **Запустите бота**
+5. **Запустите бота:**
 
    ```bash
    poetry run python src/bot/bot.py

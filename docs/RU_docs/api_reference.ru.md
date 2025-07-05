@@ -112,7 +112,7 @@ X-API-Token: <секретный_токен>
 - `500 Internal Server Error` - ошибка сервера
 
 <br>
-<a id="#4"></a>
+<a id="#5"></a>
 
 ## 5
 
