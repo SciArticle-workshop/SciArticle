@@ -178,8 +178,6 @@ cython_debug/
 .pypirc
 environment.yml
 
-docs/*.pdf
-docs/*.xlsx
 staticfiles
 src/staticfiles/
 media/
