@@ -16,7 +16,7 @@ from bot.models import (
     Subscription,
     Validation,
 )
-from sciarticle.settings import PDF_FILES, SEARCH_CHAT_ID
+from sciarticle.settings import BOT_NAME_SCISOURCE, PDF_FILES, SEARCH_CHAT_ID
 
 from .scisource_client import (
     award_subscription,

@@ -61,6 +61,8 @@ Create a `.env` file in the `infra` directory and define the variables from `env
 ```python
 TELEGRAM_BOT_TOKEN=your_bot_token_here # The @SciArticleBot bot
 
+BOT_NAME_SCISOURCE=username # Username @SciSourceBot bot
+
 SOURCE_SERVER_URL=http://your-api   # URL of the service that accepts POST requests
 
 SEARCH_CHAT_ID=id_sciarticle_search_chat   # The main chat for all users
