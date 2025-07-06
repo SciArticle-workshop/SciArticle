@@ -1,7 +1,7 @@
 # SciArticle
 
 [![en](https://img.shields.io/badge/language-EN-green.svg)](README.md)
-[![ru](https://img.shields.io/badge/language-RU-red.svg)](docs/RU_docs/README.ru.md)
+[![ru](https://img.shields.io/badge/language-RU-red.svg)](docs/RU_docs/README_ru.md)
 
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
 [![Django](https://img.shields.io/badge/django-5.2+-blue.svg)](https://www.djangoproject.com/)
