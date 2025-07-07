@@ -8,6 +8,9 @@ class RequestSerializer(serializers.Serializer):
     message_id = serializers.IntegerField()
     doi = serializers.CharField(max_length=256)
     message_search_id = serializers.IntegerField()
+    username = serializers.CharField(
+        max_length=256, required=False, allow_blank=True
+    )
 
     def validate_doi(self, value):
         """
@@ -27,7 +30,9 @@ class ValidateBrokenPDFSerializer(serializers.Serializer):
     file = serializers.FileField()
     message_id = serializers.IntegerField()
     chat_id = serializers.IntegerField()
-    doi = serializers.CharField(max_length=255)
-    username = serializers.CharField(max_length=255)
+    doi = serializers.CharField(max_length=256)
+    username = serializers.CharField(
+        max_length=256, required=False, allow_blank=True
+    )
     bot_id = serializers.IntegerField()
-    bot_name = serializers.CharField(max_length=255)
+    bot_name = serializers.CharField(max_length=256)

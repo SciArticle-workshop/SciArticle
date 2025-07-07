@@ -94,7 +94,7 @@ async def check_pdf_file(
         # Записываем в бд информацию о файле
         user, _ = await ChatUser.objects.aget_or_create(
             telegram_id=user_id,
-            defaults={'username': username},
+            defaults={'username': username or f'user_{user_id}'},
         )
 
         pdf_upload = await PDFUpload.objects.acreate(
@@ -210,7 +210,8 @@ async def handle_vote_callback_task(
         return
 
     voter, _ = await ChatUser.objects.aget_or_create(
-        telegram_id=voter_id, defaults={'username': username}
+        telegram_id=voter_id,
+        defaults={'username': username or f'user_{voter_id}'}
     )
     vote_val = action == 'vote_valid'
 
