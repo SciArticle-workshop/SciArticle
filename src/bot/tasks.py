@@ -23,7 +23,8 @@ def request_pdf_task(chat_id, message_id, doi, username, message_search_id):
     Проверяет на дубликаты.
     """
     chat_user, _ = ChatUser.objects.get_or_create(
-        telegram_id=chat_id, defaults={'username': username}
+        telegram_id=chat_id,
+        defaults={'username': username or f'user_{chat_id}'}
     )
 
     # Проверка на наличие в базе даных запроса по DOI у пользователя

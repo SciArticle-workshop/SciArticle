@@ -36,6 +36,7 @@ class RequestAPIView(APIView):
         message_id = serializer.validated_data['message_id']
         doi = serializer.validated_data['doi']
         message_search_id = serializer.validated_data['message_search_id']
+        username = serializer.validated_data['username']
 
         logger.info(
             f'Request received: for article doi:{doi} from chat_id:{chat_id}'
@@ -45,7 +46,7 @@ class RequestAPIView(APIView):
             chat_id,
             message_id,
             doi,
-            f'user_{chat_id}',
+            username,
             message_search_id,
         )
         if not result:
