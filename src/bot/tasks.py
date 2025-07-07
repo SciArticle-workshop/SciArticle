@@ -9,7 +9,7 @@ from bot.models import ChatUser, Notification, PDFUpload, Request
 from sciarticle.settings import SEARCH_CHAT_ID
 
 from .scisource_client import check_is_user, send_request, send_thank_message
-from .services import delete_message_and_file
+from .services import delete_message, delete_message_and_file
 
 logger = logging.getLogger(__name__)
 
@@ -112,9 +112,9 @@ def run_check_and_delete_thank_message():
         try:
             chat_id = notification.chat_id
             if chat_id == SEARCH_CHAT_ID:
-                async_to_sync(bot.delete_message)(
-                    chat_id=SEARCH_CHAT_ID,
-                    message_id=notification.chat_message_id,
+                async_to_sync(delete_message)(
+                    SEARCH_CHAT_ID,
+                    notification.chat_message_id,
                 )
                 logger.info(
                     f'Thank message deleted: {notification.chat_message_id}'
@@ -127,11 +127,11 @@ def run_check_and_delete_thank_message():
                     count_type = notification.type
                     if count_type == 'upload':
                         # Обнуляем в бд его счетчик загрузок
-                        notification.user.upload_count = 0
+                        notification.user.counts.upload_count = 0
                     else:
                         # Обнуляем в бд его счетчик проверок
-                        notification.user.validation_count = 0
-                    notification.user.save()
+                        notification.user.counts.validation_count = 0
+                    notification.user.counts.save()
             else:
                 send_thank_message(notification)
             # Удаляем из бд благодарственное сообщение

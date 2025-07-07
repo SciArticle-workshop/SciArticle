@@ -155,6 +155,12 @@ async def delete_message_and_file(pdfupload, delete_file):
     )
 
 
+async def delete_message(chat_id, message_id):
+    """Обертка над функцией delete_message с новым экземпляром бота."""
+    bot = get_bot()
+    await bot.delete_message(chat_id=chat_id, message_id=message_id)
+
+
 async def handle_vote_callback_task(
     callback_query_id: str, callback_data: str, voter_id: int, username: str
 ):
@@ -331,6 +337,9 @@ def check_and_award_subscription(chat_user, count):
         return False
 
     if chat_user.is_bot:
+        return False
+
+    if not check_is_user(chat_user):
         return False
 
     awarded = False
