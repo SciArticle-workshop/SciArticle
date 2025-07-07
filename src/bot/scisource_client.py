@@ -11,7 +11,9 @@ headers = {
 
 
 def send_request(request):
-    """Отправляет post-запрос с информацией о истекший запросах."""
+    """
+    Отправляет post-запрос с информацией о запросах, которые нужно удалить.
+    """
     data = {
         'message_id': request.message_id,
         'chat_id': request.chat_id,
@@ -39,7 +41,7 @@ def send_request(request):
 
 def renew_request(new_request):
     """
-    Отправляет запрос с информацией для публикации нового запроса в общем чате.
+    Отправляет запрос с информацией для новой публикации запроса в общем чате.
     """
     data = {'doi': new_request.doi}
 

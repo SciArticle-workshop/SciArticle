@@ -1,156 +1,133 @@
 # SciArticle
 
-SciArticle is a web application designed to help users find and share scientific articles. It includes a Telegram bot that allows users to search for articles by DOI (Digital Object Identifier), request PDFs, and collaborate with other users to validate uploaded articles.
+[![en](https://img.shields.io/badge/language-EN-green.svg)](README.md)
+[![ru](https://img.shields.io/badge/language-RU-red.svg)](docs/RU_docs/README_ru.md)
 
-## Features
+[![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
+[![Django](https://img.shields.io/badge/django-5.2+-blue.svg)](https://www.djangoproject.com/)
 
-- **Article Requests**: Users can request articles by providing a DOI
-- **PDF Uploads**: Community members can upload PDFs in response to requests
-- **Validation System**: Community-based validation of uploaded PDFs
-- **Reward System**: Users earn subscription benefits for contributing uploads and validations
-- **Telegram Integration**: Access the service directly through a Telegram bot
 
-## Technology Stack
+**SciArticle** is a server-side application and Telegram bot designed for crowdsourcing and validating scientific articles in PDF format.
+The bot allows users to upload article PDFs, vote on the validity of uploaded documents, and receive a subscription for active participation.
 
-- **Backend**: Django (Python)
-- **Task Queue**: Celery with Redis
-- **Testing**: pytest
-- **Containerization**: Docker and docker-compose
-- **Database**: PostgreSQL (implied from Docker setup)
+The bot interacts with another service — `@SciSourceBot` — via an internal REST API, enabling the following features:
+- registration of article requests (by DOI)
+- validation and re-validation of PDF files
+- sending notifications to the public chat
+- tracking user activity and granting subscriptions
+
+## [Architecture and How It Works](docs/EN_docs/architecture.md)
+
+## Tech Stack
+
+- **Backend**: Django, Django REST Framework
+- **Database**: PostgreSQL
+- **Task Queue**: Celery
+- **Message Broker**: Redis
+- **Telegram Bot**: python-telegram-bot
+- **Web Server (in Docker)**: WSGI + WhiteNoise
+- **Containerization**: Docker
 
 ## Project Structure
 
-- **`src/`**: Main application code
-  - **`api/`**: API endpoints
-  - **`bot/`**: Telegram bot implementation
-  - **`common/`**: Shared utilities and components
-  - **`sciarticle/`**: Django project settings
-- **`tests/`**: Test suite
-- **`infra/`**: Infrastructure configuration (Docker, etc.)
-- **`data/`**: Data storage
-- **`docs/`**: Project documentation
-
-## Setup and Installation
-
-### Prerequisites
-
-- Python 3.12+
-- Poetry (Python package manager)
-- Docker and docker-compose (for containerized deployment)
-- Redis (for Celery task queue)
-
-### Local Development
-
-1. Clone the repository:
 ```
-git clone https://github.com/yourusername/sciarticle.git
-   cd sciarticle
+.
+├── data/                    # Data (e.g., DB), mounted in Docker
+├── docs/                    # Documentation
+├── infra/                   # Infrastructure configuration
+│   ├── docker-compose.yml   # Container orchestration
+│   ├── Dockerfile           # Application image build
+│   └── initdb/              # SQL scripts for DB initialization
+├── src/                     # Application source code
+│   ├── api/                 # Django app for the REST API
+│   ├── bot/                 # Django app for the bot's logic
+│   │   ├── handlers/        # Message and callback handlers
+│   │   ├── migrations/
+│   │   ├── tasks.py         # Asynchronous Celery tasks
+│   │   └── services.py      # Bot's business logic
+│   ├── sciarticle/          # Main Django project settings
+│   ├── celery_app.py        # Celery configuration
+│   └── manage.py            # Django management utility
+├── poetry.lock              # Pinned dependency versions
+├── pyproject.toml           # Project definition and its dependencies
+└── README.md
 ```
-
-
-2. Install dependencies with Poetry:
-```
-poetry install
-```
-
-
-3. Create a `.env` file based on `.env.example`
-
-4. Run the development server:
-```
-poetry run python src/manage.py runserver
-```
-
-
-5. Start Celery worker:
-```
-poetry run celery -A src.celery_app worker -l info
-```
-
-
-### Testing
-
-Run tests with pytest:
-```
-poetry run pytest
-```
-
-
-Or use the provided script:
-```
-./run_tests.sh
-```
-
-
-### Docker Deployment
-
-Use docker-compose to build and run the application:
-```
-docker-compose up -d
-```
-
+## [Installation and Launch](docs/EN_docs/installation.md)
 
 ## Environment Variables
 
-Create a `.env` file in the project root with the following required variables:
+Create a `.env` file in the `infra` directory and define the variables from `env.example` in it.
 
+```python
+TELEGRAM_BOT_TOKEN=your_bot_token_here # The @SciArticleBot bot
+
+BOT_NAME_SCISOURCE=username # Username @SciSourceBot bot
+
+SOURCE_SERVER_URL=http://your-api   # URL of the service that accepts POST requests
+
+SEARCH_CHAT_ID=id_sciarticle_search_chat   # The main chat for all users
+
+API_SECRET_TOKEN=your_secret_token   # For securing HTTP requests between services without user involvement
 ```
-# Database configuration
-POSTGRES_DB=sciarticle
-POSTGRES_USER=django
-POSTGRES_PASSWORD=your_secure_password
-DB_HOST=postgres  # Use 'localhost' for local development without Docker
-DB_PORT=5432
+## API Endpoints
 
-# Telegram integration
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token  # Get this from @BotFather
+The internal REST API is used for data exchange between two Telegram bots: `@SciArticleBot` and `@SciSourceBot`.
 
-# Redis configuration (for Celery)
-REDIS_HOST=redis  # Use 'localhost' for local development without Docker
-REDIS_PORT=6379
+All requests between the bots are secured using an API token.
 
-# Django settings
-SECRET_KEY=your_django_secret_key  # Or leave empty to auto-generate
-DEBUG=True  # Set to False in production
-ALLOWED_HOSTS=localhost 127.0.0.1  # Add your domain in production
+## Used HTTP methods:
+| Method | Purpose                      |
+|--------|------------------------------|
+| `POST` | Create and transmit data     |
+| `GET`  | Retrieve information         |
+| `PUT`  | Update data                  |
+
+## [API Documentation](docs/EN_docs/api_reference.md)
+
+## Testing
+
+To run the tests, use `pytest`:
+
+```bash
+poetry run pytest
 ```
-
-
-Optional environment variables with their defaults:
-```
-# Database engine
-DB_ENGINE=django.db.backends.postgresql
-```
-
-
-For local development, you can use the `.env.example` file as a template. In a production environment, make sure to:
-1. Set `DEBUG=False`
-2. Add your domain to `ALLOWED_HOSTS`
-3. Use strong, unique passwords
-4. Generate a proper `SECRET_KEY` rather than relying on auto-generation
-
-## Configuration
-
-The application uses environment variables for configuration as detailed above. See `.env.example` for more details.
-
-## How It Works
-
-1. Users request articles via the Telegram bot by providing a DOI
-2. Community members can upload PDFs to fulfill these requests
-3. Other users validate the uploaded PDFs
-4. Once validated, the requester receives the PDF
-5. Contributors earn rewards based on their participation
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Implement your changes
-4. Add tests for new functionality
-5. Create a pull request
-
-Please follow the project's coding standards and commit message conventions.
 
 ## License
 
-This project is licensed under the terms of the LICENSE file included in the repository.
+This project is licensed under the terms specified in the `LICENSE` file.
+
+## Contributors
+
+<table>
+  <tr>
+        <td align="center">
+      <a href="https://github.com/TatyanaYus">
+        <img src="https://github.com/TatyanaYus.png?size=100" width="100px;" alt="TatyanaYus"/>
+        <br />
+        <sub><b>TatyanaYus</b></sub>
+      </a>
+    </td>
+        <td align="center">
+      <a href="https://github.com/aeee78">
+        <img src="https://github.com/aeee78.png?size=100" width="100px;" alt="aeee78"/>
+        <br />
+        <sub><b>aeee78</b></sub>
+      </a>
+    </td>
+        <td align="center">
+      <a href="https://github.com/AndreyZimin99">
+        <img src="https://github.com/AndreyZimin99.png?size=100" width="100px;" alt="AndreyZimin99"/>
+        <br />
+        <sub><b>AndreyZimin99</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/FrostWillmott">
+        <img src="https://github.com/FrostWillmott.png?size=100" width="100px;" alt="FrostWillmott"/>
+        <br />
+        <sub><b>FrostWillmott</b></sub>
+      </a>
+    </td>
+
+  </tr>
+</table>
