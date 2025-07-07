@@ -32,7 +32,7 @@ class ValidateBrokenPDFSerializer(serializers.Serializer):
     chat_id = serializers.IntegerField()
     doi = serializers.CharField(max_length=256)
     username = serializers.CharField(
-        max_length=255, required=False, allow_blank=True
+        max_length=256, required=False, allow_blank=True
     )
     bot_id = serializers.IntegerField()
     bot_name = serializers.CharField(max_length=256)
